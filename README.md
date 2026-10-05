@@ -181,3 +181,4 @@ For dashboard integration, proxy requests through your dashboard backend. This s
 Run `npm test` and `npm run typecheck`. Tests cover input validation, context exclusions, chunk indexing and refresh, pinning/import expansion, invalid model file references, retry behavior, completed/failed run persistence and the Ollama HTTP protocol using a fake server. Real local-model plans still require human review.
 
 Verified locally: all eight tests and TypeScript type checking passed. The live evaluation command reports measured retrieval and planning performance for the currently configured repositories.
+all are working
