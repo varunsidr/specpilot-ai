@@ -1,0 +1,10 @@
+{
+  "title": "Add a maximum-price product filter",
+  "description": "Let shoppers filter the product listing by a maximum price and reset the filter.",
+  "acceptanceCriteria": [
+    "Only products priced at or below the entered maximum are shown.",
+    "A product exactly at the maximum price is included.",
+    "Reset restores all products.",
+    "A clear empty state appears when no products match."
+  ]
+}

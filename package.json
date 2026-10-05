@@ -1,0 +1,26 @@
+{
+  "name": "specpilot-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=.env src/server.ts",
+    "start": "node --env-file-if-exists=.env src/server.ts",
+    "test": "node --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "index": "node --env-file-if-exists=.env scripts/index.ts",
+    "setup:tokenizers": "node --env-file-if-exists=.env scripts/setup-tokenizers.ts",
+    "eval": "node --env-file-if-exists=.env scripts/evaluate.ts",
+    "check:publish": "node scripts/check-publish.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@huggingface/tokenizers": "^0.2.0"
+  }
+}

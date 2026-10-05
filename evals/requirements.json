@@ -1,0 +1,58 @@
+[
+  {
+    "id": "price-sort",
+    "requirement": {
+      "title": "Keep dress catalog price sorting correct",
+      "description": "When a shopper chooses Price: Low to High on the dress catalog, visible cards must be sorted by their displayed rupee price without dropping or duplicating products.",
+      "acceptanceCriteria": [
+        "The initial and sorted product card counts match.",
+        "Each displayed price is at least the previous price after selecting Price: Low to High.",
+        "The multiset of displayed prices is unchanged by sorting."
+      ]
+    },
+    "expectedFiles": [
+      { "repository": "website", "path": "src/components/ProductListing.tsx" },
+      { "repository": "tests", "path": "tests/ecommerce/price-sorting.spec.ts" },
+      { "repository": "tests", "path": "pages/ecommerce-storefront-page.ts" }
+    ],
+    "scenarioTerms": ["order", "count", "price"]
+  },
+  {
+    "id": "empty-search",
+    "requirement": {
+      "title": "Show an empty state for a missing product search",
+      "description": "A shopper submits an unlikely search term from the navigation search control. The search results route should explain that no products match.",
+      "acceptanceCriteria": [
+        "Submitting a search navigates to the search results route with the query.",
+        "The results heading remains visible.",
+        "A no results message appears for an unmatched term."
+      ]
+    },
+    "expectedFiles": [
+      { "repository": "website", "path": "src/components/Navbar.tsx" },
+      { "repository": "website", "path": "src/app/arama/page.tsx" },
+      { "repository": "tests", "path": "tests/ecommerce/catalog.spec.ts" },
+      { "repository": "tests", "path": "pages/ecommerce-storefront-page.ts" }
+    ],
+    "scenarioTerms": ["query", "results", "empty"]
+  },
+  {
+    "id": "guest-checkout",
+    "requirement": {
+      "title": "Block empty checkout for a signed out shopper",
+      "description": "When a guest visits checkout with no cart items, keep payment unavailable and explain both the sign in and empty cart states.",
+      "acceptanceCriteria": [
+        "The checkout heading is visible.",
+        "The shopper sees a sign in prompt and empty cart message.",
+        "The simulate payment button is disabled."
+      ]
+    },
+    "expectedFiles": [
+      { "repository": "website", "path": "src/app/checkout/page.tsx" },
+      { "repository": "website", "path": "src/context/CartContext.tsx" },
+      { "repository": "tests", "path": "tests/ecommerce/account-cart-checkout.spec.ts" },
+      { "repository": "tests", "path": "pages/ecommerce-storefront-page.ts" }
+    ],
+    "scenarioTerms": ["sign", "empty", "disabled"]
+  }
+]
