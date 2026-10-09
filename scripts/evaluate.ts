@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { config } from '../src/config.ts';
@@ -8,9 +9,11 @@ import { collectContext } from '../src/repositories/context.ts';
 import { OllamaEmbedder } from '../src/repositories/semantic.ts';
 import { loadTokenCounter } from '../src/repositories/tokenizer.ts';
 import { validateRequirement } from '../src/requirements/validate.ts';
+import { expandContext } from '../src/repositories/expand-context.ts';
+import { goldDrift, loadCases, type SourceSnapshot } from '../src/evaluation/cases.ts';
+import { goldLineCoverage, planQuality } from '../src/evaluation/quality.ts';
 import type { PinnedFile, Plan } from '../src/types.ts';
 
-type Case = { id: string; requirement: unknown; expectedFiles: PinnedFile[]; scenarioTerms: string[] };
 const runCommand = promisify(execFile);
 const key = (file: PinnedFile) => `${file.repository}:${file.path}`;
 const recall = (expected: Set<string>, found: Set<string>) => [...expected].filter(file => found.has(file)).length / expected.size;
@@ -53,7 +56,7 @@ function quality(plan: Plan, expected: Set<string>, terms: string[]) {
   };
 }
 
-const allCases = JSON.parse(await readFile(new URL('../evals/requirements.json', import.meta.url), 'utf8')) as Case[];
+const allCases = await loadCases();
 const selectedCases = new Set((process.env.EVAL_CASES ?? '').split(',').map(id => id.trim()).filter(Boolean));
 const cases = selectedCases.size ? allCases.filter(item => selectedCases.has(item.id)) : allCases;
 if (!cases.length) throw new Error(`No evaluation cases matched EVAL_CASES: ${[...selectedCases].join(', ')}`);
@@ -61,15 +64,35 @@ const models = (process.env.EVAL_MODELS ?? config.ollamaModel).split(',').map(mo
 const retrievalOnly = process.env.EVAL_RETRIEVAL_ONLY === 'true';
 const embedder = new OllamaEmbedder(config.ollamaUrl, config.embedModel, config.embedTimeoutMs);
 const roots = { website: config.websiteRepo, tests: config.testRepo };
+const goldSourceSnapshot = JSON.parse(await readFile(new URL('../evals/source-snapshot.json', import.meta.url), 'utf8')) as SourceSnapshot;
+const drift = await goldDrift(roots, cases, goldSourceSnapshot);
+if (drift.length) throw new Error(`Gold sources changed; review cases and run eval:snapshot: ${drift.join(', ')}`);
 const entries: object[] = [];
+const outputDir = path.resolve('./data/evals');
+await mkdir(outputDir, { recursive: true });
+const createdAt = new Date().toISOString();
+const stamp = createdAt.replace(/[:.]/g, '-');
+const output = path.join(outputDir, `${stamp}.json`);
+const plannerCodeHashes = Object.fromEntries(await Promise.all(['providers/prompt.ts', 'providers/schema.ts', 'providers/stages.ts', 'providers/evidence.ts', 'providers/ollama.ts', 'repositories/expand-context.ts', 'repositories/ranges.ts', 'repositories/semantic-context.ts'].map(async file => [file, createHash('sha256').update(await readFile(new URL(`../src/${file}`, import.meta.url))).digest('hex')])));
+async function checkpoint(complete = false) {
+  await writeFile(`${output}.tmp`, JSON.stringify({ createdAt,
+    complete, expectedEntries: models.length * cases.length, goldSourceSnapshot, goldCases: cases,
+    settings: { models, embeddingModel: config.embedModel, numCtx: config.numCtx, timeoutMs: config.timeoutMs, retrievalOnly, plannerCodeHashes, sourceRoots: roots, indexDir: config.indexDir },
+    metricNotes: 'Gold outcomes and line ranges were inspected in source snapshots, not verified by running the external apps. Status agreement and unnecessary edits are measured against that snapshot. Exact quotes prove provenance, not semantic correctness; fill manualReview for unsupported semantic claims. File overlap and keyword coverage are legacy proxies. GPU memory includes other processes.', entries }, null, 2));
+  await rename(`${output}.tmp`, output);
+}
+console.log(`Evaluation report (updated after each case): ${output}`);
 for (const model of models) {
   const tokenCounter = await loadTokenCounter(config.tokenizerDir, model);
   for (const item of cases) {
     const requirement = validateRequirement(item.requirement);
     const expected = new Set(item.expectedFiles.map(key));
-    const result: Record<string, unknown> = { id: item.id, model, expectedFiles: [...expected] };
+    const result: Record<string, unknown> = { id: item.id, model, category: item.category, expectedOutcome: item.expectedOutcome, expectedFiles: [...expected] };
+    let provider: OllamaProvider | undefined;
     try {
+      if ((await goldDrift(roots, [item], goldSourceSnapshot)).length) throw new Error('Gold source changed before this case; inspect and refresh the case first');
       const retrieval = await measure(() => collectContext(roots, requirement, { indexDir: config.indexDir, embedder, tokenCounter, numCtx: config.numCtx }));
+      result.context = retrieval.value;
       const ranked = retrieval.value.retrieval?.rankedFiles ?? [];
       const selected = retrieval.value.files;
       result.retrieval = {
@@ -80,29 +103,32 @@ for (const model of models) {
         recallAt10: round(recall(expected, new Set(ranked.slice(0, 10).map(key)))),
         selectedFileRecall: round(recall(expected, new Set(selected.map(key)))),
         selectedFiles: [...new Set(selected.map(key))], rankedFiles: ranked.slice(0, 10).map(key),
+        goldLineCoverage: round(goldLineCoverage(retrieval.value, item)),
       };
       if (!retrievalOnly) {
-        const provider = new OllamaProvider({ url: config.ollamaUrl, model, timeoutMs: config.timeoutMs, numCtx: config.numCtx });
-        const generation = await measure(() => provider.plan(requirement, retrieval.value));
+        provider = new OllamaProvider({ url: config.ollamaUrl, model, timeoutMs: config.timeoutMs, numCtx: config.numCtx, tokenCounter });
+        const context = retrieval.value;
+        const generation = await measure(() => provider!.plan(requirement, context, { resolveContext: async (requests, retainEvidence) => {
+          Object.assign(context, await expandContext(roots, requirement, context, requests, { indexDir: config.indexDir, embedder, tokenCounter, numCtx: config.numCtx }, retainEvidence));
+          return context;
+        } }));
+        const verified = !(await goldDrift(roots, [item], goldSourceSnapshot)).length;
+        result.goldSourcesVerified = verified;
         result.plan = { latencyMs: generation.durationMs, gpu: generation.gpu,
           ollama: provider.lastMetrics, automatedQualityProxy: quality(generation.value, expected, item.scenarioTerms),
-          output: generation.value };
+          correctness: verified ? planQuality(generation.value, item) : null, finalGoldLineCoverage: round(goldLineCoverage(context, item)), finalPromptTokens: context.retrieval?.promptTokens,
+          contextFollowUps: context.followUps ?? [], finalContext: context.files, output: generation.value };
       }
       console.log(`${model} ${item.id}: retrieval ${retrieval.durationMs} ms, recall@10 ${(result.retrieval as { recallAt10: number }).recallAt10}`);
     } catch (error) {
       result.error = error instanceof Error ? error.message : String(error);
+      result.ollama = provider?.lastMetrics;
       console.error(`${model} ${item.id}: ${result.error}`);
     }
     entries.push(result);
+    await checkpoint();
   }
 }
-const outputDir = path.resolve('./data/evals');
-await mkdir(outputDir, { recursive: true });
-const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-const output = path.join(outputDir, `${stamp}.json`);
-await writeFile(output, JSON.stringify({ createdAt: new Date().toISOString(),
-  settings: { models, embeddingModel: config.embedModel, numCtx: config.numCtx, retrievalOnly },
-  metricNotes: 'Gold files are manually chosen from the configured repos. Recall and latency are objective for this set. Plan file overlap and keyword coverage are rough proxies; inspect output for correctness. GPU memory includes other processes.',
-  entries }, null, 2));
+await checkpoint(true);
 console.log(`Evaluation report: ${output}`);
 if (entries.some(entry => 'error' in entry)) process.exitCode = 1;

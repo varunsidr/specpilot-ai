@@ -11,11 +11,46 @@
       ]
     },
     "expectedFiles": [
-      { "repository": "website", "path": "src/components/ProductListing.tsx" },
-      { "repository": "tests", "path": "tests/ecommerce/price-sorting.spec.ts" },
-      { "repository": "tests", "path": "pages/ecommerce-storefront-page.ts" }
+      {
+        "repository": "website",
+        "path": "src/components/ProductListing.tsx"
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/price-sorting.spec.ts"
+      },
+      {
+        "repository": "tests",
+        "path": "pages/ecommerce-storefront-page.ts"
+      }
     ],
-    "scenarioTerms": ["order", "count", "price"]
+    "scenarioTerms": [
+      "order",
+      "count",
+      "price"
+    ],
+    "category": "implemented",
+    "expectedOutcome": "already_implemented",
+    "expectedAssessments": [
+      "implemented",
+      "implemented",
+      "implemented"
+    ],
+    "allowedChangeFiles": [],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/components/ProductListing.tsx",
+        "startLine": 207,
+        "endLine": 218
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/price-sorting.spec.ts",
+        "startLine": 18,
+        "endLine": 69
+      }
+    ]
   },
   {
     "id": "empty-search",
@@ -29,12 +64,56 @@
       ]
     },
     "expectedFiles": [
-      { "repository": "website", "path": "src/components/Navbar.tsx" },
-      { "repository": "website", "path": "src/app/arama/page.tsx" },
-      { "repository": "tests", "path": "tests/ecommerce/catalog.spec.ts" },
-      { "repository": "tests", "path": "pages/ecommerce-storefront-page.ts" }
+      {
+        "repository": "website",
+        "path": "src/components/Navbar.tsx"
+      },
+      {
+        "repository": "website",
+        "path": "src/app/arama/page.tsx"
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/catalog.spec.ts"
+      },
+      {
+        "repository": "tests",
+        "path": "pages/ecommerce-storefront-page.ts"
+      }
     ],
-    "scenarioTerms": ["query", "results", "empty"]
+    "scenarioTerms": [
+      "query",
+      "results",
+      "empty"
+    ],
+    "category": "implemented",
+    "expectedOutcome": "already_implemented",
+    "expectedAssessments": [
+      "implemented",
+      "implemented",
+      "implemented"
+    ],
+    "allowedChangeFiles": [],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/app/arama/page.tsx",
+        "startLine": 19,
+        "endLine": 75
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/catalog.spec.ts",
+        "startLine": 63,
+        "endLine": 73
+      },
+      {
+        "repository": "website",
+        "path": "src/components/Navbar.tsx",
+        "startLine": 110,
+        "endLine": 117
+      }
+    ]
   },
   {
     "id": "guest-checkout",
@@ -48,11 +127,761 @@
       ]
     },
     "expectedFiles": [
-      { "repository": "website", "path": "src/app/checkout/page.tsx" },
-      { "repository": "website", "path": "src/context/CartContext.tsx" },
-      { "repository": "tests", "path": "tests/ecommerce/account-cart-checkout.spec.ts" },
-      { "repository": "tests", "path": "pages/ecommerce-storefront-page.ts" }
+      {
+        "repository": "website",
+        "path": "src/app/checkout/page.tsx"
+      },
+      {
+        "repository": "website",
+        "path": "src/context/CartContext.tsx"
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/account-cart-checkout.spec.ts"
+      },
+      {
+        "repository": "tests",
+        "path": "pages/ecommerce-storefront-page.ts"
+      }
     ],
-    "scenarioTerms": ["sign", "empty", "disabled"]
+    "scenarioTerms": [
+      "sign",
+      "empty",
+      "disabled"
+    ],
+    "category": "implemented",
+    "expectedOutcome": "already_implemented",
+    "expectedAssessments": [
+      "implemented",
+      "implemented",
+      "implemented"
+    ],
+    "allowedChangeFiles": [],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/app/checkout/page.tsx",
+        "startLine": 115,
+        "endLine": 126
+      },
+      {
+        "repository": "website",
+        "path": "src/app/checkout/page.tsx",
+        "startLine": 173,
+        "endLine": 177
+      },
+      {
+        "repository": "website",
+        "path": "src/app/checkout/page.tsx",
+        "startLine": 190,
+        "endLine": 197
+      }
+    ]
+  },
+  {
+    "id": "quantity-minimum",
+    "category": "implemented",
+    "requirement": {
+      "title": "Keep product quantity at one or more",
+      "description": "Inspect the product detail decrement control; preserve its existing lower bound.",
+      "acceptanceCriteria": [
+        "Decreasing quantity when it is one leaves it at one."
+      ]
+    },
+    "expectedFiles": [
+      {
+        "repository": "website",
+        "path": "src/components/ProductDetailView.tsx"
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/product-detail.spec.ts"
+      }
+    ],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/components/ProductDetailView.tsx",
+        "startLine": 443,
+        "endLine": 459
+      }
+    ],
+    "expectedOutcome": "already_implemented",
+    "expectedAssessments": [
+      "implemented"
+    ],
+    "allowedChangeFiles": [],
+    "scenarioTerms": [
+      "quantity",
+      "one"
+    ]
+  },
+  {
+    "id": "quantity-stock",
+    "category": "missing",
+    "requirement": {
+      "title": "Disable quantity increases at stock limit",
+      "description": "Inspect the current product detail stock handling.",
+      "acceptanceCriteria": [
+        "The increase control is disabled at the available stock limit and for an out of stock product."
+      ]
+    },
+    "expectedFiles": [
+      {
+        "repository": "website",
+        "path": "src/components/ProductDetailView.tsx"
+      }
+    ],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/components/ProductDetailView.tsx",
+        "startLine": 51,
+        "endLine": 51
+      },
+      {
+        "repository": "website",
+        "path": "src/components/ProductDetailView.tsx",
+        "startLine": 111,
+        "endLine": 123
+      },
+      {
+        "repository": "website",
+        "path": "src/components/ProductDetailView.tsx",
+        "startLine": 454,
+        "endLine": 460
+      }
+    ],
+    "expectedOutcome": "changes_needed",
+    "expectedAssessments": [
+      "gap"
+    ],
+    "allowedChangeFiles": [
+      {
+        "repository": "website",
+        "path": "src/components/ProductDetailView.tsx"
+      }
+    ],
+    "scenarioTerms": [
+      "stock",
+      "disabled"
+    ]
+  },
+  {
+    "id": "cart-invalid-json",
+    "category": "implemented",
+    "requirement": {
+      "title": "Recover an invalid saved cart",
+      "description": "Inspect restoreCart behavior for malformed browser storage.",
+      "acceptanceCriteria": [
+        "Invalid JSON returns an empty cart with recovered set to true instead of throwing."
+      ]
+    },
+    "expectedFiles": [
+      {
+        "repository": "website",
+        "path": "src/lib/cartStorage.ts"
+      },
+      {
+        "repository": "website",
+        "path": "src/context/CartContext.tsx"
+      }
+    ],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/lib/cartStorage.ts",
+        "startLine": 16,
+        "endLine": 20
+      }
+    ],
+    "expectedOutcome": "already_implemented",
+    "expectedAssessments": [
+      "implemented"
+    ],
+    "allowedChangeFiles": [],
+    "scenarioTerms": [
+      "json",
+      "empty"
+    ]
+  },
+  {
+    "id": "cart-duplicate-variants",
+    "category": "implemented",
+    "requirement": {
+      "title": "Merge duplicate saved cart variants",
+      "description": "Inspect saved cart restoration without changing its variant identity rules.",
+      "acceptanceCriteria": [
+        "Rows with the same product, size and color merge into one line and their safe quantities are added."
+      ]
+    },
+    "expectedFiles": [
+      {
+        "repository": "website",
+        "path": "src/lib/cartStorage.ts"
+      }
+    ],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/lib/cartStorage.ts",
+        "startLine": 35,
+        "endLine": 49
+      }
+    ],
+    "expectedOutcome": "already_implemented",
+    "expectedAssessments": [
+      "implemented"
+    ],
+    "allowedChangeFiles": [],
+    "scenarioTerms": [
+      "variant",
+      "quantity"
+    ]
+  },
+  {
+    "id": "guest-add-cart",
+    "category": "implemented",
+    "requirement": {
+      "title": "Require sign in before adding to cart",
+      "description": "Inspect the cart provider authentication guard.",
+      "acceptanceCriteria": [
+        "A signed out shopper triggers the login prompt and no cart item is added."
+      ]
+    },
+    "expectedFiles": [
+      {
+        "repository": "website",
+        "path": "src/context/CartContext.tsx"
+      },
+      {
+        "repository": "website",
+        "path": "src/components/ProductDetailView.tsx"
+      }
+    ],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/context/CartContext.tsx",
+        "startLine": 69,
+        "endLine": 76
+      }
+    ],
+    "expectedOutcome": "already_implemented",
+    "expectedAssessments": [
+      "implemented"
+    ],
+    "allowedChangeFiles": [],
+    "scenarioTerms": [
+      "sign",
+      "cart"
+    ]
+  },
+  {
+    "id": "cart-zero-quantity",
+    "category": "implemented",
+    "requirement": {
+      "title": "Remove a cart variant when quantity falls below one",
+      "description": "Inspect the cart provider updateQuantity behavior.",
+      "acceptanceCriteria": [
+        "An integer quantity below one removes the matching variant."
+      ]
+    },
+    "expectedFiles": [
+      {
+        "repository": "website",
+        "path": "src/context/CartContext.tsx"
+      },
+      {
+        "repository": "website",
+        "path": "src/lib/cartStorage.ts"
+      }
+    ],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/context/CartContext.tsx",
+        "startLine": 90,
+        "endLine": 103
+      }
+    ],
+    "expectedOutcome": "already_implemented",
+    "expectedAssessments": [
+      "implemented"
+    ],
+    "allowedChangeFiles": [],
+    "scenarioTerms": [
+      "remove",
+      "quantity"
+    ]
+  },
+  {
+    "id": "cart-total",
+    "category": "implemented",
+    "requirement": {
+      "title": "Compute cart count and total from quantities",
+      "description": "Inspect the cart provider derived totals.",
+      "acceptanceCriteria": [
+        "totalCount sums item quantities and totalPrice sums price times quantity."
+      ]
+    },
+    "expectedFiles": [
+      {
+        "repository": "website",
+        "path": "src/context/CartContext.tsx"
+      }
+    ],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/context/CartContext.tsx",
+        "startLine": 105,
+        "endLine": 111
+      }
+    ],
+    "expectedOutcome": "already_implemented",
+    "expectedAssessments": [
+      "implemented"
+    ],
+    "allowedChangeFiles": [],
+    "scenarioTerms": [
+      "quantity",
+      "total"
+    ]
+  },
+  {
+    "id": "production-limiter-unavailable",
+    "category": "implemented",
+    "requirement": {
+      "title": "Report unavailable shared rate limiting in production",
+      "description": "Inspect the rate limiter helper return value without inferring caller behavior.",
+      "acceptanceCriteria": [
+        "In production, missing shared limiter configuration returns null rather than falling back to the local limiter."
+      ]
+    },
+    "expectedFiles": [
+      {
+        "repository": "website",
+        "path": "src/lib/rateLimit.ts"
+      }
+    ],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/lib/rateLimit.ts",
+        "startLine": 27,
+        "endLine": 35
+      }
+    ],
+    "expectedOutcome": "already_implemented",
+    "expectedAssessments": [
+      "implemented"
+    ],
+    "allowedChangeFiles": [],
+    "scenarioTerms": [
+      "production",
+      "null"
+    ]
+  },
+  {
+    "id": "terms-headings",
+    "category": "implemented",
+    "requirement": {
+      "title": "Keep the terms page headings",
+      "description": "Inspect the existing terms page and its Playwright checks.",
+      "acceptanceCriteria": [
+        "The terms route displays Terms of Service and an Open Source Project section."
+      ]
+    },
+    "expectedFiles": [
+      {
+        "repository": "website",
+        "path": "src/app/kullanim-kosullari/page.tsx"
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/legal.spec.ts"
+      }
+    ],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/app/kullanim-kosullari/page.tsx",
+        "startLine": 7,
+        "endLine": 16
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/legal.spec.ts",
+        "startLine": 3,
+        "endLine": 9
+      }
+    ],
+    "expectedOutcome": "already_implemented",
+    "expectedAssessments": [
+      "implemented"
+    ],
+    "allowedChangeFiles": [],
+    "scenarioTerms": [
+      "terms",
+      "heading"
+    ]
+  },
+  {
+    "id": "mobile-menu",
+    "category": "implemented",
+    "requirement": {
+      "title": "Close the mobile menu after choosing a collection",
+      "description": "Inspect mobile collection links rather than redesigning navigation.",
+      "acceptanceCriteria": [
+        "Choosing a collection closes the mobile menu and follows its link."
+      ]
+    },
+    "expectedFiles": [
+      {
+        "repository": "website",
+        "path": "src/components/Navbar.tsx"
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/catalog.spec.ts"
+      },
+      {
+        "repository": "tests",
+        "path": "pages/ecommerce-storefront-page.ts"
+      }
+    ],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/components/Navbar.tsx",
+        "startLine": 610,
+        "endLine": 635
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/catalog.spec.ts",
+        "startLine": 76,
+        "endLine": 82
+      }
+    ],
+    "expectedOutcome": "already_implemented",
+    "expectedAssessments": [
+      "implemented"
+    ],
+    "allowedChangeFiles": [],
+    "scenarioTerms": [
+      "mobile",
+      "collection"
+    ]
+  },
+  {
+    "id": "sort-url-persistence",
+    "category": "missing",
+    "requirement": {
+      "title": "Persist product sorting in the URL",
+      "description": "Add a sort query parameter to the product listing so a copied URL or reload keeps the selected sort order.",
+      "acceptanceCriteria": [
+        "Changing the sort select writes a sort query parameter.",
+        "Loading a URL with sort=price-low initializes the selector and ordering accordingly."
+      ]
+    },
+    "expectedFiles": [
+      {
+        "repository": "website",
+        "path": "src/components/ProductListing.tsx"
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/price-sorting.spec.ts"
+      },
+      {
+        "repository": "tests",
+        "path": "pages/ecommerce-storefront-page.ts"
+      }
+    ],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/components/ProductListing.tsx",
+        "startLine": 41,
+        "endLine": 52
+      },
+      {
+        "repository": "website",
+        "path": "src/components/ProductListing.tsx",
+        "startLine": 253,
+        "endLine": 267
+      }
+    ],
+    "expectedOutcome": "changes_needed",
+    "expectedAssessments": [
+      "gap",
+      "gap"
+    ],
+    "allowedChangeFiles": [
+      {
+        "repository": "website",
+        "path": "src/components/ProductListing.tsx"
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/price-sorting.spec.ts"
+      },
+      {
+        "repository": "tests",
+        "path": "pages/ecommerce-storefront-page.ts"
+      }
+    ],
+    "scenarioTerms": [
+      "url",
+      "reload"
+    ]
+  },
+  {
+    "id": "quantity-step-buttons",
+    "category": "missing",
+    "requirement": {
+      "title": "Offer quantity step controls of five",
+      "description": "Add separate plus-five and minus-five controls alongside the existing single-step quantity controls, respecting stock and the minimum of one.",
+      "acceptanceCriteria": [
+        "Plus-five adds five unless the available stock limit is lower.",
+        "Minus-five subtracts five while keeping quantity at least one."
+      ]
+    },
+    "expectedFiles": [
+      {
+        "repository": "website",
+        "path": "src/components/ProductDetailView.tsx"
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/product-detail.spec.ts"
+      },
+      {
+        "repository": "tests",
+        "path": "pages/ecommerce-storefront-page.ts"
+      }
+    ],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/components/ProductDetailView.tsx",
+        "startLine": 443,
+        "endLine": 460
+      }
+    ],
+    "expectedOutcome": "changes_needed",
+    "expectedAssessments": [
+      "gap",
+      "gap"
+    ],
+    "allowedChangeFiles": [
+      {
+        "repository": "website",
+        "path": "src/components/ProductDetailView.tsx"
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/product-detail.spec.ts"
+      },
+      {
+        "repository": "tests",
+        "path": "pages/ecommerce-storefront-page.ts"
+      }
+    ],
+    "scenarioTerms": [
+      "five",
+      "stock",
+      "minimum"
+    ]
+  },
+  {
+    "id": "empty-search-browse-link",
+    "category": "missing",
+    "requirement": {
+      "title": "Link from empty search results to the women collection",
+      "description": "Add a clickable browse link in the search empty state, preserving the existing explanatory text.",
+      "acceptanceCriteria": [
+        "An unmatched search displays a Browse women collection link to /kadin."
+      ]
+    },
+    "expectedFiles": [
+      {
+        "repository": "website",
+        "path": "src/app/arama/page.tsx"
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/catalog.spec.ts"
+      },
+      {
+        "repository": "tests",
+        "path": "pages/ecommerce-storefront-page.ts"
+      }
+    ],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/app/arama/page.tsx",
+        "startLine": 69,
+        "endLine": 76
+      }
+    ],
+    "expectedOutcome": "changes_needed",
+    "expectedAssessments": [
+      "gap"
+    ],
+    "allowedChangeFiles": [
+      {
+        "repository": "website",
+        "path": "src/app/arama/page.tsx"
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/catalog.spec.ts"
+      },
+      {
+        "repository": "tests",
+        "path": "pages/ecommerce-storefront-page.ts"
+      }
+    ],
+    "scenarioTerms": [
+      "link",
+      "empty"
+    ]
+  },
+  {
+    "id": "undo-cart-removal",
+    "category": "missing",
+    "requirement": {
+      "title": "Undo the most recently removed cart item",
+      "description": "Provide an undo control for the last removed cart variant that is available until another item is removed or the page reloads.",
+      "acceptanceCriteria": [
+        "Removing a variant offers an undo control.",
+        "Undo restores the removed variant quantity without changing other variants."
+      ]
+    },
+    "expectedFiles": [
+      {
+        "repository": "website",
+        "path": "src/context/CartContext.tsx"
+      },
+      {
+        "repository": "website",
+        "path": "src/components/Navbar.tsx"
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/account-cart-checkout.spec.ts"
+      }
+    ],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/context/CartContext.tsx",
+        "startLine": 90,
+        "endLine": 103
+      }
+    ],
+    "expectedOutcome": "changes_needed",
+    "expectedAssessments": [
+      "gap",
+      "gap"
+    ],
+    "allowedChangeFiles": [
+      {
+        "repository": "website",
+        "path": "src/context/CartContext.tsx"
+      },
+      {
+        "repository": "website",
+        "path": "src/components/Navbar.tsx"
+      },
+      {
+        "repository": "tests",
+        "path": "tests/ecommerce/account-cart-checkout.spec.ts"
+      }
+    ],
+    "scenarioTerms": [
+      "undo",
+      "variant"
+    ]
+  },
+  {
+    "id": "shipping-policy",
+    "category": "ambiguous",
+    "requirement": {
+      "title": "Use the correct free shipping threshold",
+      "description": "Add a free shipping rule at checkout. The business has not supplied the threshold, eligible regions or currency conversion policy.",
+      "acceptanceCriteria": [
+        "Checkout applies the agreed free shipping threshold for eligible regions."
+      ]
+    },
+    "expectedFiles": [
+      {
+        "repository": "website",
+        "path": "src/app/checkout/page.tsx"
+      },
+      {
+        "repository": "website",
+        "path": "src/context/CurrencyContext.tsx"
+      }
+    ],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/app/checkout/page.tsx",
+        "startLine": 180,
+        "endLine": 205
+      }
+    ],
+    "expectedOutcome": "needs_context",
+    "expectedAssessments": [
+      "unknown"
+    ],
+    "allowedChangeFiles": [],
+    "scenarioTerms": [
+      "threshold",
+      "region"
+    ]
+  },
+  {
+    "id": "refund-rounding-policy",
+    "category": "ambiguous",
+    "requirement": {
+      "title": "Use the agreed refund rounding rule",
+      "description": "Define how a partial refund in a different display currency is rounded. No rounding direction, exchange-rate timing or refund policy has been supplied.",
+      "acceptanceCriteria": [
+        "Partial refunds follow the approved rounding and exchange-rate policy."
+      ]
+    },
+    "expectedFiles": [
+      {
+        "repository": "website",
+        "path": "src/context/CurrencyContext.tsx"
+      },
+      {
+        "repository": "website",
+        "path": "src/app/checkout/page.tsx"
+      }
+    ],
+    "expectedEvidence": [
+      {
+        "repository": "website",
+        "path": "src/context/CurrencyContext.tsx",
+        "startLine": 64,
+        "endLine": 73
+      }
+    ],
+    "expectedOutcome": "needs_context",
+    "expectedAssessments": [
+      "unknown"
+    ],
+    "allowedChangeFiles": [],
+    "scenarioTerms": [
+      "round",
+      "policy"
+    ]
   }
 ]

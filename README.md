@@ -57,7 +57,7 @@ Set `.env` using the exact model name shown in that output:
 AI_PROVIDER=ollama
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=qwen3.5:9b
-OLLAMA_TIMEOUT_MS=180000
+OLLAMA_TIMEOUT_MS=300000
 OLLAMA_NUM_CTX=8192
 RAG_ENABLED=true
 OLLAMA_EMBED_MODEL=qwen3-embedding:0.6b
@@ -75,7 +75,7 @@ npm run index
 npm run dev
 ```
 
-In a second terminal, run `node scripts/demo.mjs`. The index is local and incremental: later planning requests refresh changed files automatically. Set `RAG_ENABLED=false` to use the original keyword-only retrieval. The adapter calls Ollama's `/api/chat` with a JSON schema, disables thinking for structured plans, and validates file references. It retries once if a model response is invalid. There is no automatic cloud fallback.
+In a second terminal, run `node scripts/demo.mjs`. The index is local and incremental: later planning requests refresh changed files automatically. Set `RAG_ENABLED=false` to use the original keyword-only retrieval. The adapter calls Ollama's `/api/chat` with a schema per stage, binds criterion numbers/text and row counts to the requirement, disables thinking for structured responses, and retries one invalid response per stage. Review schemas restrict scenarios to the exact draft scenarios; the backend checks uniqueness and coverage. Both Ollama retrieval modes require tokenizer assets to check each actual prompt. There is no automatic cloud fallback.
 
 Only one planning request runs at a time. On an 8 GB GPU, the embedding query releases its model before the planner loads; `qwen3.5:9b` may still use some system RAM. Actual VRAM use and latency depend on quantization, context and other GPU workloads. If it is slow or runs out of memory, try `qwen3:8b`. Both models have local tokenizer files; rerun `npm run setup:tokenizers` after a fresh install. Keep `OLLAMA_NUM_CTX=8192` until measured retrieval and plan results justify a change.
 
@@ -104,6 +104,14 @@ Invoke-RestMethod -Uri http://127.0.0.1:4100/api/plans `
 
 `pinnedFiles` is optional; each entry names an eligible repository file using a relative forward-slash path. Up to eight files can be pinned. `POST /api/plans` waits for planning and returns a complete run. Failed workflows return HTTP 502 with a saved failed run and error. Invalid input returns 400; concurrent planning returns 409. `GET /api/runs/<id>` retrieves a saved run. Run JSON files live under `data/runs/` and include selected source snippets and line ranges.
 
+Plans now use `schemaVersion: 2`. Each acceptance criterion has an `implemented`, `gap`, or `unknown` assessment with an observation and exact source quotes. Every proposed edit names its criterion, observed gap, and evidence from that file. Quotes are checked against supplied line ranges. The outcome is `already_implemented` (no changes), `changes_needed`, or `needs_context` (questions, no speculative edits). A completed run means a valid plan was returned, including an unresolved `needs_context` result; it does not mean the requirement was implemented or tests were executed. Existing saved plans retain their older format.
+
+The model selects content-bound evidence IDs; the backend supplies the exact quotes and lines in the saved public plan. IDs stay the same for identical source fragments across overlapping excerpts, and change when their location or text changes. Long lines are split into fragments of at most 500 characters. A valid ID still cannot prove that the model interpreted the source correctly.
+
+Planning now runs in stages. First, assess every criterion without proposing edits. Supplied handlers, state definitions and complete UI blocks can establish a gap for an additive enhancement; implementation choices alone are not missing business policy. The backend derives the outcome; any unknown criterion returns questions and prevents drafting. Unresolved assessment questions cannot coexist with fully resolved criteria, so missing business decisions cannot be locked as gaps for drafting. If all criteria are implemented, the run finishes after assessment. Confirmed gaps enter a draft stage grouped by exact criterion number and text; assessments stay fixed, and changes must retain evidence from their gap assessment. A final model review checks criterion alignment, evidence support and unsupported risk statements, and traces every test scenario through the proposed guards and result. The backend independently rejects failed scenario checks and contradictory summary flags, passing those findings to correction. Reported issues reject the draft. This review can miss errors and does not replace independent source review. Stage diagnostics, including rejected-draft review findings and up to 12,000 characters of each structurally rejected response, are saved in `planningMetrics` and ignored evaluation reports. Treat these source-bearing records as private.
+
+For bounded numeric enhancements, drafting is instructed to state handler formulas and disabled conditions, calculate clamped expectations, and cover ordinary, partial-step, limit, zero and unknown-limit states where relevant. Review is instructed to calculate those results independently. Risk findings must reference an actual draft risk; an empty risk list cannot receive a fabricated finding. These constraints improve review structure but still require source inspection to establish correctness.
+
 ## Project layout
 
 ```text
@@ -119,10 +127,14 @@ src/
   repositories/tokenizer.ts Local Qwen tokenizer counter
   repositories/semantic.ts  Ollama embedding adapter
   repositories/semantic-context.ts  Hybrid semantic/keyword retrieval
+  repositories/expand-context.ts   Bounded follow-up evidence reads
+  evaluation/              Gold source checks and correctness metrics
   providers/
     mock.ts                 Offline demo provider
     ollama.ts               Local model adapter
     schema.ts               Plan schema and reference validation
+    evidence.ts             Stable source-fragment IDs and quote resolution
+    stages.ts               Assessment, draft, and review contracts
   workflows/plan.ts         Coordinates requirement-to-plan
   runs/store.ts             JSON run persistence
 examples/                   Sample repos and requirement
@@ -130,7 +142,7 @@ scripts/demo.mjs            API client
 scripts/index.ts            Index builder
 scripts/setup-tokenizers.ts Pinned tokenizer download and checksum check
 scripts/evaluate.ts         Retrieval and planning evaluation
-evals/requirements.json     Real requirement gold files
+evals/requirements.json     Implemented, missing, and ambiguous evaluation cases
 tests/                     Starter verification tests
 ```
 
@@ -138,19 +150,29 @@ tests/                     Starter verification tests
 
 With `RAG_ENABLED=true`, the service splits each eligible source file into overlapping, line-numbered chunks and embeds each chunk with Ollama. Each request refreshes changed files, embeds the requirement, combines semantic and keyword rankings, and expands imports plus related Playwright tests from leading matches. Pinned files rank first. Selected snippets include six nearby lines where they fit. The embedding model is separate from the planning model. The index is local JSON in `data/index/`; no vector database is needed. The first chunk rebuild takes longer than later incremental refreshes.
 
-The planner counts the actual Qwen tokenizer output for its full prompt, including instructions, requirement and selected code. It reserves 1,800 tokens for the plan and 256 tokens of headroom inside `OLLAMA_NUM_CTX`. Up to twelve chunks, six per repository and two per file, are selected within that budget. If pins cannot fit, the request fails with a clear error. The count is an estimate of Ollama's final chat prompt: its schema formatting and internal templates can add tokens, so compare `retrieval.promptTokens` with Ollama's `prompt_eval_count` in evaluation reports.
+The planner counts Qwen tokenizer output for its full prompt, including instructions, requirement, evidence IDs, line labels, available file paths and selected code. Retrieval reserves 1,800 output tokens, 256 tokens of template headroom, 256 for validation feedback, and 1,200 for later stage state inside `OLLAMA_NUM_CTX`. At 8192, the initial assessment prompt budget is 4,680 tokens. Up to twelve chunks, normally six per repository and two per file, are selected within that budget; pins can exceed the per-repository cap. Every stage measures its actual prompt again before sending it; unusually large assessments/drafts can still fail the fit check. If pins cannot fit, the request fails with a clear error. Compare per-stage estimates with Ollama's `prompt_eval_count` in reports.
+
+If excerpts are incomplete, the assessment stage can ask for up to three eligible file ranges of at most 120 lines. Follow-up packing preserves pins, previously requested ranges, and source around assessment citations before adding new ranges. If protected evidence cannot fit, the original context is retained and no new range is served. Adjacent excerpts jointly count as supplied lines. Prompts include supplied ranges, follow-up warnings, and the previous assessment for reassessment against source. Expansion stops after two rounds; an unknown assessment's redundant request gets at most one reassessment with explicit feedback before stopping. For resolved assessments, already-supplied requests are discarded and recorded in `redundantContextRequests`; genuinely unseen requests remain invalid until the relevant assessment is unknown. A trace is saved in `context.followUps`. The model never gets arbitrary filesystem access. Invalid responses get one structural repair attempt per stage, with a short error and a rebuilt prompt; rejected responses are not appended. A negative consistency review allows one redraft using its findings, then requires another review. A second negative review rejects the plan. `reviewAttempts` retains both drafts and reviews, while `consistencyFailures` includes findings from all attempts even when correction succeeds. `OLLAMA_TIMEOUT_MS` bounds assessment, expansion, drafting, review and repairs together. Gap cases normally need three model calls, or five with consistency correction; implemented or policy-unknown cases normally need one.
 
 With `RAG_ENABLED=false`, the original keyword retrieval selects up to six files per repository, with up to 12,000 characters per repository and 4,000 per file. Pinning and token packing apply to RAG mode. Both modes report excerpting and inventory limits.
 
 ## Evaluate retrieval and planning
 
-`evals/requirements.json` records three requirements from the configured storefront and Playwright repositories, with source and test files chosen by inspection. Run `npm run eval` for retrieval recall at 5 and 10 files, selected-file recall, prompt tokens, plan file overlap, scenario keyword coverage, latency, and sampled GPU memory/utilization. The report is saved in ignored `data/evals/`; the measured baseline and findings are in `evals/README.md`. To compare your two local planners on the same requirements, set `$env:EVAL_MODELS='qwen3:8b,qwen3.5:9b'` before running it. Set `$env:EVAL_RETRIEVAL_ONLY='true'` for a faster ranking-only run, or `$env:EVAL_CASES='price-sort'` to isolate a case. Remove those session variables afterward if needed. Plan overlap and keyword coverage are simple proxies; read the plans before deciding which model or ranking is better. The gold paths may need updating if either external repository changes.
+`evals/requirements.json` records 19 cases from the connected storefront and Playwright repos: 12 implemented behaviors, five gaps (four constructed enhancements and one stock-guard defect), and two ambiguous policies. The stock case was corrected after source inspection found that a product can be entirely out of stock while no size is selected and its quantity increase control remains enabled. Historical reports used its older label. Cases include expected assessments, outcomes and source line ranges. `evals/source-snapshot.json` contains paths and hashes, not external source text. The real evaluation corpus requires those repos; it is separate from the included demo fixtures.
+
+Run `npm run eval:check` before `npm run eval`. Evaluation refuses stale gold sources. When a repo changes, inspect the affected expected outcomes and lines before deliberately running `npm run eval:snapshot`. Each new report retains a fixed copy of its gold hashes and checkpoints after each case under ignored `data/evals/`. It records retrieval/file and line coverage, outcome agreement, criterion status accuracy, false gap/implementation claims, unnecessary edits on implemented or ambiguous cases, validation failures, context rounds, latency, GPU use and accepted raw plans. Exact citations validate provenance; semantic correctness still needs the manual review described in [evals/REVIEW.md](evals/REVIEW.md). Unreviewed semantic claim counts remain `null`.
+
+Set `$env:EVAL_MODELS='qwen3:8b,qwen3.5:9b'` to compare both planners, `$env:EVAL_RETRIEVAL_ONLY='true'` for ranking only, or `$env:EVAL_CASES='quantity-minimum,quantity-step-buttons,shipping-policy'` for a stratified smoke run. Remove session variables afterward if needed. Historical measurements are in [evals/README.md](evals/README.md); file overlap and keyword coverage are retained only as legacy proxies.
+
+If another task is editing the repositories, use `npm run eval:freeze` to copy eligible files into ignored `data/eval-snapshots/`. Unchanged cache entries use the existing size/mtime cache checks; changed files are embedded afresh. Read the printed snapshot's `manifest.json` and set session variables `WEBSITE_REPO`, `TEST_REPO`, and `RAG_INDEX_DIR` to its `roots.website`, `roots.tests`, and `indexDir`. Run `eval:check` against those copies. If gold hashes differ, inspect the changed source and criteria before using `eval:snapshot`; then run the comparison. Remove those session variables to return to `.env` repositories. Freezing prevents later edits to the originals from changing the copied evaluation input; it does not establish semantic correctness or guarantee that ordinary source files contain no secrets.
+
+Use `npm run eval:summary` for a compact view of the latest report, or `npm run eval:summary -- data/evals/<report>.json` for a specific run. Failed model calls remain in the outcome-match denominator; cases invalidated by source drift are reported separately and withheld from that comparison.
 
 Hidden files, common build/dependency folders, symlinks and filenames indicating credentials are skipped. This does **not** guarantee secrets are absent inside ordinary source files. Review what is stored in run context before adding any external provider. File references are checked against supplied context; that establishes provenance, not correctness. The model can request missing context or proposed new files in `questions`.
 
 ## Roadmap and publishing
 
-[ROADMAP.md](ROADMAP.md) tracks the next stages: better evidence checking, Git provenance, reviewable diffs, isolated test execution, and dashboard integration. The first priority is plan correctness because both local models proposed unnecessary changes in the current evaluation.
+[ROADMAP.md](ROADMAP.md) tracks the next stages: better evidence checking, Git provenance, reviewable diffs, isolated test execution, and dashboard integration. Plan correctness remains the first priority: the latest frozen 19-case comparison matched 10 outcomes per model, but source review found incorrect claims and a quantity-boundary plan that passed model review with wrong expectations. See [evals/README.md](evals/README.md) for the category breakdown and measurement limits.
 
 Before the first GitHub commit, run `npm run check:publish` and inspect the staged diff. `.env` and all `data/` contents stay local; `.env.example` is the public template. See [SECURITY.md](SECURITY.md) for the runtime boundary and what to do if a secret has already entered Git history.
 
@@ -180,5 +202,5 @@ For dashboard integration, proxy requests through your dashboard backend. This s
 
 Run `npm test` and `npm run typecheck`. Tests cover input validation, context exclusions, chunk indexing and refresh, pinning/import expansion, invalid model file references, retry behavior, completed/failed run persistence and the Ollama HTTP protocol using a fake server. Real local-model plans still require human review.
 
-Verified locally: all eight tests and TypeScript type checking passed. The live evaluation command reports measured retrieval and planning performance for the currently configured repositories.
+Verification includes quote/line rejection, stale evidence IDs, exact criterion ownership, fixed assessments, model-reported contradiction rejection, per-stage token checks, prevention of edits to implemented/unknown criteria, empty change lists, bounded context expansion, and correctness scoring. Run `npm test`, `npm run typecheck`, and `npm run eval:check` for the current checks.
 all are working

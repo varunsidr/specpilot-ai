@@ -7,7 +7,7 @@ import { inventory } from './scan.ts';
 import type { Embedder } from './semantic.ts';
 import type { TokenCounter } from './tokenizer.ts';
 import { InputError } from '../requirements/validate.ts';
-import { MAX_PLAN_TOKENS, PROMPT_SAFETY_TOKENS, promptTokens } from '../providers/prompt.ts';
+import { MAX_PLAN_TOKENS, PROMPT_SAFETY_TOKENS, REPAIR_RESERVE_TOKENS, STAGE_RESERVE_TOKENS, promptTokens } from '../providers/prompt.ts';
 import type { ContextFile, RepositoryName, Requirement, RepositoryContext } from '../types.ts';
 
 export type SemanticOptions = { indexDir: string; embedder: Embedder; tokenCounter: TokenCounter; numCtx: number };
@@ -71,7 +71,7 @@ function overlaps(a: ContextFile, b: ContextFile): boolean {
 export async function collectSemanticContext(roots: Roots, requirement: Requirement, options: SemanticOptions): Promise<RepositoryContext> {
   const files: ContextFile[] = [];
   const warnings: string[] = [];
-  const budget = options.numCtx - MAX_PLAN_TOKENS - PROMPT_SAFETY_TOKENS;
+  const budget = options.numCtx - MAX_PLAN_TOKENS - PROMPT_SAFETY_TOKENS - REPAIR_RESERVE_TOKENS - STAGE_RESERVE_TOKENS;
   if (budget <= 0) throw new Error('OLLAMA_NUM_CTX is too small for the reserved plan output');
   const terms = termsFor(requirement);
   const query = `${requirement.title}\n${requirement.description}\n${requirement.acceptanceCriteria.join('\n')}`;
@@ -157,7 +157,9 @@ export async function collectSemanticContext(roots: Roots, requirement: Requirem
     if (rankedFiles.length >= 40) break;
   }
   if (candidates.some(candidate => candidate.chunk.endOffset - candidate.chunk.startOffset < candidate.raw.length)) warnings.push('Some files were excerpted; inspect source before applying a plan.');
-  if (promptTokens(options.tokenCounter, requirement, { files, warnings }) > budget) throw new Error('Requirement and planner instructions exceed the token budget; shorten the requirement or increase OLLAMA_NUM_CTX.');
+  const availableFiles = rankedFiles;
+  const tokenCount = (selected: ContextFile[]) => promptTokens(options.tokenCounter, requirement, { files: selected, warnings, availableFiles });
+  if (tokenCount(files) > budget) throw new Error('Requirement and planner instructions exceed the token budget; shorten the requirement or increase OLLAMA_NUM_CTX.');
   const perRepo: Record<RepositoryName, number> = { website: 0, tests: 0 };
   const perFile = new Map<string, number>();
   const markdown: Record<RepositoryName, number> = { website: 0, tests: 0 };
@@ -175,9 +177,9 @@ export async function collectSemanticContext(roots: Roots, requirement: Requirem
     if (candidate.path.endsWith('.md') && markdown[candidate.repository] >= 1 && !pinned.has(key)) continue;
     let snippet = asContextFile(candidate, 6);
     if (files.some(file => overlaps(file, snippet))) continue;
-    if (promptTokens(options.tokenCounter, requirement, { files: [...files, snippet], warnings }) > budget) {
+    if (tokenCount([...files, snippet]) > budget) {
       snippet = asContextFile(candidate, 0);
-      if (promptTokens(options.tokenCounter, requirement, { files: [...files, snippet], warnings }) > budget) continue;
+      if (tokenCount([...files, snippet]) > budget) continue;
     }
     files.push(snippet);
     perRepo[candidate.repository]++;
@@ -186,6 +188,6 @@ export async function collectSemanticContext(roots: Roots, requirement: Requirem
   }
   for (const key of pinned) if (!files.some(file => `${file.repository}:${file.path}` === key)) throw new Error(`Pinned file could not fit in the ${options.numCtx}-token context: ${key}.`);
   if (!files.length) throw new Error('No eligible source files found in the configured repositories');
-  const used = promptTokens(options.tokenCounter, requirement, { files, warnings });
-  return { files, warnings, retrieval: { promptTokens: used, promptBudget: budget, rankedFiles } };
+  const used = tokenCount(files);
+  return { files, warnings, availableFiles, retrieval: { promptTokens: used, promptBudget: budget, rankedFiles } };
 }

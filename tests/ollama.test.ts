@@ -3,25 +3,33 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { OllamaProvider } from '../src/providers/ollama.ts';
+import { gapPlan, context, requirement, assessmentResponse, draftResponse, positiveReview, tokenCounter } from './plan-fixtures.ts';
 test('Ollama adapter sends a structured request and validates the response', async () => {
   let request: any;
-  const plan = { summary: 'Add price filtering', changes: [{ repository: 'website', path: 'products.ts', reason: 'Contains product logic', steps: ['Add inclusive comparison'] }], testScenarios: ['Boundary price'], risks: [], questions: [] };
+  const stages: string[] = [];
+  const plan = gapPlan();
   const server = createServer(async (req,res) => {
     assert.equal(req.url, '/api/chat');
     let body = ''; for await (const chunk of req) body += chunk;
     request = JSON.parse(body);
+    const stage = request.format.properties.assessments ? 'assessment' : request.format.properties.criteria ? 'draft' : 'review';
+    stages.push(stage);
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ message: { content: JSON.stringify(plan) } }));
+    res.end(JSON.stringify({ message: { content: JSON.stringify(stage === 'assessment' ? assessmentResponse(plan) : stage === 'draft' ? draftResponse(plan) : positiveReview()) } }));
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
-    const provider = new OllamaProvider({ url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, model: 'test-model', timeoutMs: 1000, numCtx: 8192 });
-    const result = await provider.plan({ title: 'Filter', description: 'Price filter', acceptanceCriteria: ['Include boundary'] }, { files: [{ repository: 'website', path: 'products.ts', content: 'export const price = 10;', truncated: false }], warnings: [] });
-    assert.deepEqual(result, plan);
+    const provider = new OllamaProvider({ url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, model: 'test-model', timeoutMs: 1000, numCtx: 8192, tokenCounter });
+    const result = await provider.plan(requirement, context);
+    assert.deepEqual(result.assessments, plan.assessments);
+    assert.deepEqual(result.changes, plan.changes);
+    assert.deepEqual(stages, ['assessment', 'draft', 'review']);
     assert.equal(request.stream, false);
     assert.equal(request.think, false);
     assert.equal(request.model, 'test-model');
     assert.equal(request.format.type, 'object');
+    assert.match(request.messages[1].content, /proposedDraft/);
+    assert.equal(provider.lastMetrics?.stages.length, 3);
   } finally { await new Promise<void>((resolve,reject) => server.close(error => error ? reject(error) : resolve())); }
 });
 
@@ -31,16 +39,20 @@ test('Ollama adapter retries an invented file reference and keeps validation str
     let raw = ''; for await (const chunk of req) raw += chunk;
     const body = JSON.parse(raw);
     requests++;
-    if (requests === 2) assert.match(body.messages.at(-1).content, /website:products.ts/);
-    const path = requests === 1 ? 'invented.ts' : 'products.ts';
+    if (requests === 3) {
+      assert.match(body.messages.at(-1).content, /validationFeedback/);
+      assert.equal(body.messages.length, 2, 'repair does not append the rejected response');
+    }
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ message: { content: JSON.stringify({ summary: 'Plan', changes: [{ repository: 'website', path, reason: 'Product logic', steps: ['Filter'] }], testScenarios: [], risks: [], questions: [] }) } }));
+    const draft = draftResponse(); if (requests === 2) draft.criteria[0].changes[0].path = 'invented.ts';
+    res.end(JSON.stringify({ message: { content: JSON.stringify(requests === 1 ? assessmentResponse() : requests === 4 ? positiveReview() : draft) } }));
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   try {
-    const provider = new OllamaProvider({ url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, model: 'test-model', timeoutMs: 1000, numCtx: 8192 });
-    const result = await provider.plan({ title: 'Filter', description: 'Price filter', acceptanceCriteria: ['Include boundary'] }, { files: [{ repository: 'website', path: 'products.ts', content: 'export const price = 10;', truncated: false }], warnings: [] });
+    const provider = new OllamaProvider({ url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`, model: 'test-model', timeoutMs: 1000, numCtx: 8192, tokenCounter });
+    const result = await provider.plan(requirement, context);
     assert.equal(result.changes[0].path, 'products.ts');
-    assert.equal(requests, 2);
+    assert.equal(requests, 4);
+    assert.equal(provider.lastMetrics?.validationFailures.length, 1);
   } finally { await new Promise<void>((resolve,reject) => server.close(error => error ? reject(error) : resolve())); }
 });

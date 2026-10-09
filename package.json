@@ -14,7 +14,11 @@
     "index": "node --env-file-if-exists=.env scripts/index.ts",
     "setup:tokenizers": "node --env-file-if-exists=.env scripts/setup-tokenizers.ts",
     "eval": "node --env-file-if-exists=.env scripts/evaluate.ts",
-    "check:publish": "node scripts/check-publish.ts"
+    "check:publish": "node scripts/check-publish.ts",
+    "eval:check": "node --env-file-if-exists=.env scripts/check-evals.ts",
+    "eval:snapshot": "node --env-file-if-exists=.env scripts/snapshot-evals.ts",
+    "eval:summary": "node scripts/summarize-eval.ts",
+    "eval:freeze": "node --env-file-if-exists=.env scripts/freeze-evals.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

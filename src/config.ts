@@ -15,7 +15,7 @@ export const config = {
   runsDir: path.resolve(process.env.RUNS_DIR ?? './data/runs'),
   ollamaUrl: process.env.OLLAMA_BASE_URL ?? 'http://127.0.0.1:11434',
   ollamaModel: process.env.OLLAMA_MODEL ?? 'qwen3:8b',
-  timeoutMs: integer('OLLAMA_TIMEOUT_MS', 180000, 1000, 600000),
+  timeoutMs: integer('OLLAMA_TIMEOUT_MS', 300000, 1000, 600000),
   numCtx: integer('OLLAMA_NUM_CTX', 8192, 2048, 32768),
   ragEnabled,
   indexDir: path.resolve(process.env.RAG_INDEX_DIR ?? './data/index'),

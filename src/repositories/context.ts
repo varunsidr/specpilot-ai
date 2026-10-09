@@ -28,7 +28,7 @@ export async function collectContext(roots: { website: string; tests: string }, 
     for (const entry of selected) {
       if (remaining <= 0) break;
       const content = entry.content.slice(0, Math.min(4000, remaining));
-      files.push({ repository, path: entry.path, content, truncated: entry.truncated || content.length < entry.content.length });
+      files.push({ repository, path: entry.path, content, startLine: 1, endLine: content.split('\n').length, truncated: entry.truncated || content.length < entry.content.length });
       remaining -= content.length;
     }
     if (selected.length < candidates.length) warnings.push(`${repository}: selected ${selected.length} of ${candidates.length} eligible files using keyword ranking.`);

@@ -1,0 +1,85 @@
+{
+  "reviewedAt": "2026-10-06T18:56:35.673Z",
+  "files": [
+    {
+      "repository": "tests",
+      "path": "pages/ecommerce-storefront-page.ts",
+      "sha256": "79459bf91f3291753d20814d6fe02dc85e0e544966a18445f5b0f7ce3f0114a7"
+    },
+    {
+      "repository": "tests",
+      "path": "tests/ecommerce/account-cart-checkout.spec.ts",
+      "sha256": "18eeb23235576ef08ce6698e986bc69d4de57ab584922864398869f35d82ce08"
+    },
+    {
+      "repository": "tests",
+      "path": "tests/ecommerce/catalog.spec.ts",
+      "sha256": "350f503c29ef8839d845605ed2d47a7c66694342892ecf244f61d923cff6d848"
+    },
+    {
+      "repository": "tests",
+      "path": "tests/ecommerce/legal.spec.ts",
+      "sha256": "bf880ca817623b24910e3518114bc463c2cd34a40d9bbbc2899537850978df6d"
+    },
+    {
+      "repository": "tests",
+      "path": "tests/ecommerce/price-sorting.spec.ts",
+      "sha256": "92547cf80f327218429b47806ca0894c2c9fa1f429fcbec25a96b39d986f82e2"
+    },
+    {
+      "repository": "tests",
+      "path": "tests/ecommerce/product-detail.spec.ts",
+      "sha256": "d4e4b9106cc8a81725e419910e818fab240ad429743f5504b2a609a2ee0bed5b"
+    },
+    {
+      "repository": "website",
+      "path": "src/app/arama/page.tsx",
+      "sha256": "18304a3a588667b2d67469f00c81e273a87606040d5ea083c5842e2dae5ca04d"
+    },
+    {
+      "repository": "website",
+      "path": "src/app/checkout/page.tsx",
+      "sha256": "d67d1b73a93b825be796c4aa73b3ec4a33a77b30061d930b2ea21f314c659eda"
+    },
+    {
+      "repository": "website",
+      "path": "src/app/kullanim-kosullari/page.tsx",
+      "sha256": "7d7934d6560158b7c60a524d2e358af6b463ccfa9be88ef0ce23e7332de69bcb"
+    },
+    {
+      "repository": "website",
+      "path": "src/components/Navbar.tsx",
+      "sha256": "abccb15ee8151f6b210e6b19aec3fcea2a9a10fc94122483978d3b7b404e1a66"
+    },
+    {
+      "repository": "website",
+      "path": "src/components/ProductDetailView.tsx",
+      "sha256": "cc813dff2b5a000bc0db794c5eeb9f7da5fe4f1d32cc99e9517653064f0f6c14"
+    },
+    {
+      "repository": "website",
+      "path": "src/components/ProductListing.tsx",
+      "sha256": "d50fe67e6ebda3c20444be00071f48e43e530bae2f8672eabdf68a8c6715512b"
+    },
+    {
+      "repository": "website",
+      "path": "src/context/CartContext.tsx",
+      "sha256": "ef68a1a52a5a2845914deab484eda5f94d88d74dfa58758c9c07fb94ce34f2ad"
+    },
+    {
+      "repository": "website",
+      "path": "src/context/CurrencyContext.tsx",
+      "sha256": "379776c2672cc07c80e82047d748be4b91f47c3f4d85d80f78d02221b9b3eb48"
+    },
+    {
+      "repository": "website",
+      "path": "src/lib/cartStorage.ts",
+      "sha256": "5a31424d731361c0ac0ffedf8637f638869e79e282c8226f28b4f0b6caaf149e"
+    },
+    {
+      "repository": "website",
+      "path": "src/lib/rateLimit.ts",
+      "sha256": "79f7ce359d7d11d62e09dc24a320d01b166e97b676ed18255a395551063dc79f"
+    }
+  ]
+}

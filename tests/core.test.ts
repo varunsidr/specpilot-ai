@@ -37,7 +37,7 @@ test('context excludes env files, dependencies and symlinks', async () => {
 });
 test('rejects model references to files outside the retrieved context', () => {
   const plan = { summary: 'Plan', changes: [{ repository: 'website', path: '../secret.ts', reason: 'x', steps: [] }], testScenarios: [], risks: [], questions: [] };
-  assert.throws(() => validatePlan(plan, { files: [], warnings: [] }));
+  assert.throws(() => validatePlan(plan, { files: [], warnings: [] }, requirement));
 });
 test('mock workflow persists a completed run and failed provider persists failure', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'ai-run-'));

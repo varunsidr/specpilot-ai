@@ -8,11 +8,12 @@ import { createPlan } from './workflows/plan.ts';
 import { readRun } from './runs/store.ts';
 import { OllamaEmbedder } from './repositories/semantic.ts';
 import { loadTokenCounter } from './repositories/tokenizer.ts';
-const provider = config.provider === 'mock' ? new MockProvider() : new OllamaProvider({ url: config.ollamaUrl, model: config.ollamaModel, timeoutMs: config.timeoutMs, numCtx: config.numCtx });
+const tokenCounter = config.ragEnabled || config.provider === 'ollama' ? await loadTokenCounter(config.tokenizerDir, config.ollamaModel) : undefined;
+const provider = config.provider === 'mock' ? new MockProvider() : new OllamaProvider({ url: config.ollamaUrl, model: config.ollamaModel, timeoutMs: config.timeoutMs, numCtx: config.numCtx, tokenCounter: tokenCounter! });
 const semantic = config.ragEnabled ? {
   indexDir: config.indexDir,
   embedder: new OllamaEmbedder(config.ollamaUrl, config.embedModel, config.embedTimeoutMs),
-  tokenCounter: await loadTokenCounter(config.tokenizerDir, config.ollamaModel),
+  tokenCounter: tokenCounter!,
   numCtx: config.numCtx,
 } : undefined;
 let busy = false;
