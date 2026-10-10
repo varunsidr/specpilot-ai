@@ -21,6 +21,10 @@ For staged runs, inspect `plan.ollama` or the failed entry's `ollama` diagnostic
 
 Use the findings to decide what to improve next. Passing structural tests does not establish model reliability, and the initial three-case retrieval result is not a general quality guarantee.
 
+Assessment diagnostics now include a private audit for each criterion. Inspect each evidence check's explanation against the actual fragment and observation. `direct` and `supportsObservation=true` are model assertions; backend validation checks their consistency, not their truth. A helper definition may establish its arithmetic, but a UI integration claim also needs the actual caller. Experimental `sourceLinks` identify syntactic calls/renders/event references, not runtime reachability. Check missing source facts separately from missing business decisions. Every unknown criterion must own a question, policy-only uncertainty cannot request source, and unresolved draft questions are rejected. A model can still mislabel an uncertainty or confidently approve irrelevant evidence.
+
+Four previously unused inputs are recorded in [RESERVED-REVIEW.md](RESERVED-REVIEW.md). They were source-reviewed by the implementing agent before this increment and must not be used to tune it. Independent gold review is pending; their results are separate from the development corpus and are not an independent held-out accuracy estimate.
+
 For bounded numeric enhancements, independently calculate the raw action result and then apply the required bounds. Check ordinary changes, partial steps near a bound, controls at a bound, and zero versus unknown limits. A disabled-control assertion can be valid; a test requiring a click on that disabled control cannot. Do not accept a review observation that merely repeats the proposed expectation without calculating it.
 
 Use [QUANTITY-REVIEW.md](QUANTITY-REVIEW.md) for the source-backed five-step quantity boundary checklist and its concrete expected values.

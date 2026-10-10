@@ -10,8 +10,8 @@ export type EvaluationCase = { id: string; category: 'implemented' | 'missing' |
   allowedChangeFiles: PinnedFile[]; scenarioTerms: string[] };
 export type SourceSnapshot = { reviewedAt: string; files: (PinnedFile & { sha256: string })[] };
 export const fileKey = (file: PinnedFile) => `${file.repository}:${file.path}`;
-export async function loadCases(): Promise<EvaluationCase[]> {
-  const cases = JSON.parse(await readFile(new URL('../../evals/requirements.json', import.meta.url), 'utf8')) as EvaluationCase[];
+export async function loadCases(filename: string | URL = process.env.EVAL_CASES_FILE ?? new URL('../../evals/requirements.json', import.meta.url)): Promise<EvaluationCase[]> {
+  const cases = JSON.parse(await readFile(filename, 'utf8')) as EvaluationCase[];
   const seen = new Set<string>();
   for (const item of cases) {
     if (!item.id || seen.has(item.id) || !['implemented', 'missing', 'ambiguous'].includes(item.category)) throw new Error('Invalid evaluation ID or category');

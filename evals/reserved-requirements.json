@@ -1,0 +1,62 @@
+[
+  {
+    "id": "reserved-currency-offline",
+    "category": "implemented",
+    "requirement": {
+      "title": "Keep currency usable when region lookup fails",
+      "description": "When the store region or exchange-rate service fails while the provider is active, retain a usable INR currency with a rate of one.",
+      "acceptanceCriteria": ["An active failed region request restores currency INR and rate 1."]
+    },
+    "expectedFiles": [{ "repository": "website", "path": "src/context/CurrencyContext.tsx" }],
+    "expectedEvidence": [{ "repository": "website", "path": "src/context/CurrencyContext.tsx", "startLine": 53, "endLine": 59 }],
+    "expectedOutcome": "already_implemented",
+    "expectedAssessments": ["implemented"],
+    "allowedChangeFiles": [],
+    "scenarioTerms": ["INR", "rate", "failure"]
+  },
+  {
+    "id": "reserved-cart-negative-price",
+    "category": "implemented",
+    "requirement": {
+      "title": "Recover valid cart rows beside negative-price rows",
+      "description": "Stored browser cart data may contain an invalid negative-priced item beside a valid item. Restore the valid item and report recovery instead of discarding the entire cart.",
+      "acceptanceCriteria": ["A negative-priced stored row is skipped while valid rows are retained.", "Restoration marks the cart recovered and the provider shows its recovery notice."]
+    },
+    "expectedFiles": [{ "repository": "website", "path": "src/lib/cartStorage.ts" }, { "repository": "website", "path": "src/context/CartContext.tsx" }],
+    "expectedEvidence": [{ "repository": "website", "path": "src/lib/cartStorage.ts", "startLine": 24, "endLine": 33 }, { "repository": "website", "path": "src/lib/cartStorage.ts", "startLine": 45, "endLine": 47 }, { "repository": "website", "path": "src/context/CartContext.tsx", "startLine": 52, "endLine": 54 }],
+    "expectedOutcome": "already_implemented",
+    "expectedAssessments": ["implemented", "implemented"],
+    "allowedChangeFiles": [],
+    "scenarioTerms": ["negative", "valid", "notice"]
+  },
+  {
+    "id": "reserved-stock-shrink",
+    "category": "implemented",
+    "requirement": {
+      "title": "Clamp existing quantity after positive stock shrinks",
+      "description": "When available product stock changes to a smaller positive amount, clamp an existing quantity to that amount. Preserve the current quantity when the stock amount is unknown.",
+      "acceptanceCriteria": ["Quantity 8 becomes 3 after available stock changes to 3.", "An unknown stock amount does not trigger the quantity-clamping effect."]
+    },
+    "expectedFiles": [{ "repository": "website", "path": "src/components/ProductDetailView.tsx" }],
+    "expectedEvidence": [{ "repository": "website", "path": "src/components/ProductDetailView.tsx", "startLine": 148, "endLine": 152 }],
+    "expectedOutcome": "already_implemented",
+    "expectedAssessments": ["implemented", "implemented"],
+    "allowedChangeFiles": [],
+    "scenarioTerms": ["8", "3", "unknown"]
+  },
+  {
+    "id": "reserved-volume-pricing-policy",
+    "category": "ambiguous",
+    "requirement": {
+      "title": "Apply approved basket volume pricing",
+      "description": "Apply our approved volume discount policy to the basket. The eligibility threshold, discount amount and currency treatment have not been supplied in this request.",
+      "acceptanceCriteria": ["Eligible baskets receive the approved volume discount.", "Discount calculation follows the approved currency treatment."]
+    },
+    "expectedFiles": [{ "repository": "website", "path": "src/context/CartContext.tsx" }, { "repository": "website", "path": "src/context/CurrencyContext.tsx" }],
+    "expectedEvidence": [{ "repository": "website", "path": "src/context/CartContext.tsx", "startLine": 107, "endLine": 108 }, { "repository": "website", "path": "src/context/CurrencyContext.tsx", "startLine": 63, "endLine": 73 }],
+    "expectedOutcome": "needs_context",
+    "expectedAssessments": ["unknown", "unknown"],
+    "allowedChangeFiles": [],
+    "scenarioTerms": ["threshold", "discount", "currency"]
+  }
+]

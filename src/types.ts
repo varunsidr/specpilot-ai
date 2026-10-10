@@ -5,10 +5,22 @@ export type ContextFile = { repository: RepositoryName; path: string; content: s
 export type ContextRequest = PinnedFile & { startLine: number; endLine: number; reason: string };
 export type Evidence = PinnedFile & { startLine: number; endLine: number; quote: string };
 export type CriterionAssessment = { criterion: number; status: 'implemented' | 'gap' | 'unknown'; observation: string; evidence: Evidence[] };
+export type CriterionRetrieval = {
+  // Initial retrieval candidates and nominations; these are not assessment evidence.
+  criterion: number;
+  rankedFiles: PinnedFile[];
+  selectedRanges: (PinnedFile & { startLine: number; endLine: number })[];
+};
+export type SourceLink = {
+  name: string; kind: 'call' | 'event' | 'render';
+  caller: PinnedFile & { startLine: number; endLine: number };
+  definition: PinnedFile & { startLine: number; endLine: number };
+};
 export type RepositoryContext = {
   files: ContextFile[]; warnings: string[]; availableFiles?: PinnedFile[];
   followUps?: { requests: ContextRequest[]; served: ContextRequest[]; warnings: string[] }[];
-  retrieval?: { promptTokens: number; promptBudget: number; rankedFiles: PinnedFile[] };
+  retrieval?: { promptTokens: number; promptBudget: number; rankedFiles: PinnedFile[]; strategy?: 'requirement' | 'criterion'; criteria?: CriterionRetrieval[];
+    selectionVersion?: number; anchors?: (PinnedFile & { startLine: number; endLine: number })[]; sourceLinks?: SourceLink[] };
 };
 export type Plan = {
   schemaVersion: 2;

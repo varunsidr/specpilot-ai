@@ -9,8 +9,8 @@ export type OllamaMetrics = { promptTokens?: number; generatedTokens?: number; t
 export class OllamaProvider implements AIProvider {
   name = 'ollama';
   lastMetrics?: OllamaMetrics;
-  private options: { url: string; model: string; timeoutMs: number; numCtx: number; tokenCounter: TokenCounter };
-  constructor(options: { url: string; model: string; timeoutMs: number; numCtx: number; tokenCounter: TokenCounter }) { this.options = options; }
+  private options: { url: string; model: string; timeoutMs: number; numCtx: number; tokenCounter: TokenCounter; beforeRequest?: (signal: AbortSignal) => Promise<void>; afterRequest?: (signal: AbortSignal) => Promise<void> };
+  constructor(options: OllamaProvider['options']) { this.options = options; }
   async plan(requirement: Requirement, context: RepositoryContext, options?: { resolveContext?: (requests: ContextRequest[], retainEvidence: Evidence[]) => Promise<RepositoryContext> }): Promise<Plan> {
     this.lastMetrics = { requests: 0, contextRounds: 0, validationFailures: [], stages: [], consistencyFailures: [], reviewAttempts: [], redundantContextRequests: [], rejectedResponses: [] };
     const signal = AbortSignal.timeout(this.options.timeoutMs);
@@ -20,6 +20,7 @@ export class OllamaProvider implements AIProvider {
         const messages = stageMessages(stage, requirement, context, feedback, assessment, draft);
         const estimatedPromptTokens = messageTokens(this.options.tokenCounter, messages);
         if (estimatedPromptTokens + MAX_PLAN_TOKENS + PROMPT_SAFETY_TOKENS > this.options.numCtx) throw new Error(`${stage} prompt exceeds ${this.options.numCtx}-token context; reduce requirement or pinned evidence`);
+        await this.options.beforeRequest?.(signal);
         const response = await fetch(new URL('/api/chat', this.options.url), {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, signal,
           body: JSON.stringify({
@@ -33,6 +34,7 @@ export class OllamaProvider implements AIProvider {
         this.lastMetrics!.requests++;
         this.lastMetrics!.stages.push({ stage, estimatedPromptTokens, promptTokens: body.prompt_eval_count, generatedTokens: body.eval_count, durationMs: Math.round((body.total_duration ?? 0) / 1e6) });
         Object.assign(this.lastMetrics!, { promptTokens: body.prompt_eval_count, generatedTokens: body.eval_count, totalDurationMs: (this.lastMetrics!.totalDurationMs ?? 0) + Math.round((body.total_duration ?? 0) / 1e6), loadDurationMs: (this.lastMetrics!.loadDurationMs ?? 0) + Math.round((body.load_duration ?? 0) / 1e6), doneReason: body.done_reason });
+        await this.options.afterRequest?.(signal);
         try {
           if (!body.message?.content) throw new Error('Ollama returned no plan content');
           return validate(JSON.parse(body.message.content));

@@ -61,6 +61,7 @@ test('unresolved assessment questions prevent locking a gap for drafting', async
   const unresolved = assessmentResponse(); unresolved.questions = ['Which boundary policy did the business agree?'];
   assert.throws(() => assessmentPlan(unresolved, context, requirement), /questions require unknown criteria/);
   const unknown = structuredClone(unresolved); unknown.assessments[0].status = 'unknown';
+  unknown.assessments[0].audit.uncertainties = [{ kind: 'policy', question: unknown.questions[0] }];
   await withProvider((body, call) => {
     assert.ok(call <= 2);
     if (call === 2) assert.match(body.messages[1].content, /business decisions must be unknown/);
@@ -84,6 +85,55 @@ test('resolved assessments discard only supplied requests without changing evide
   assert.deepEqual(result.plan.assessments[0].evidence, gapPlan().assessments[0].evidence);
   response.contextRequests[0].endLine = 2;
   assert.throws(() => assessmentPlan(response, context, requirement), /Resolved assessments cannot have pending/);
+});
+
+test('assessment audits reject missing checks, unrelated evidence and definition-only integration claims', () => {
+  const missing = assessmentResponse(); missing.assessments[0].audit.evidenceChecks = [];
+  assert.throws(() => assessmentPlan(missing, context, requirement), /every selected evidence ID/);
+  const wrongId = assessmentResponse(); wrongId.assessments[0].audit.evidenceChecks[0].evidenceId = 'other-criterion';
+  assert.throws(() => assessmentPlan(wrongId, context, requirement), /IDs must match/);
+  for (const relation of ['definition_only', 'unrelated'] as const) {
+    const unsupported = assessmentResponse(); unsupported.assessments[0].audit.evidenceChecks[0].relation = relation;
+    assert.throws(() => assessmentPlan(unsupported, context, requirement), /direct supporting evidence/);
+  }
+  const negative = assessmentResponse(); negative.assessments[0].audit.evidenceChecks[0].supportsObservation = false;
+  assert.throws(() => assessmentPlan(negative, context, requirement), /direct supporting evidence/);
+});
+
+test('criterion uncertainty ownership blocks unrelated questions and policy-only source requests', () => {
+  const unknown = assessmentResponse(); unknown.assessments[0].status = 'unknown';
+  unknown.questions = ['Which maximum-price rule is approved?'];
+  unknown.assessments[0].audit.uncertainties = [{ kind: 'policy', question: unknown.questions[0] }];
+  assert.equal(assessmentPlan(unknown, context, requirement).plan.outcome, 'needs_context');
+  unknown.contextRequests = [{ repository: 'website', path: 'products.ts', startLine: 1, endLine: 1, reason: 'Find the business rule' }];
+  assert.throws(() => assessmentPlan(unknown, context, requirement), /Policy questions cannot be resolved by source requests/);
+  unknown.contextRequests = [];
+  unknown.assessments[0].audit.uncertainties[0].question = 'Unassigned question';
+  assert.throws(() => assessmentPlan(unknown, context, requirement), /copy its question/);
+  unknown.assessments[0].audit.uncertainties = [];
+  assert.throws(() => assessmentPlan(unknown, context, requirement), /their own source or policy question/);
+});
+
+test('an audited missing policy is repaired to unknown and never enters drafting', async () => {
+  const bad = assessmentResponse();
+  bad.assessments[0].audit.uncertainties = [{ kind: 'policy', question: 'Which maximum-price rule is approved?' }];
+  const corrected = structuredClone(bad); corrected.assessments[0].status = 'unknown'; corrected.questions = [bad.assessments[0].audit.uncertainties[0].question];
+  await withProvider((body, call) => {
+    assert.ok(call <= 2, 'no draft/review call may occur for unresolved policy');
+    if (call === 2) assert.match(body.messages[1].content, /Unresolved source or policy decisions/);
+    return call === 1 ? bad : corrected;
+  }, async provider => {
+    const plan = await provider.plan(requirement, context);
+    assert.equal(plan.outcome, 'needs_context'); assert.deepEqual(plan.changes, []);
+    assert.deepEqual(provider.lastMetrics?.assessment?.assessments[0].audit.uncertainties, corrected.assessments[0].audit.uncertainties);
+    assert.deepEqual(provider.lastMetrics?.stages.map(stage => stage.stage), ['assessment', 'assessment']);
+  });
+});
+
+test('drafts cannot defer required policy questions after locking a gap', () => {
+  const assessed = assessmentPlan(assessmentResponse(), context, requirement);
+  const draft = draftResponse(); draft.questions = ['Which maximum-price rule is approved?'];
+  assert.throws(() => draftPlan(draft, assessed.response, assessed.plan, context, requirement), /uncertainty in assessment before locking gaps/);
 });
 
 test('draft keeps assessment fixed and requires exact criterion ownership', () => {
@@ -236,6 +286,7 @@ test('already supplied requests get one reassessment with feedback before drafti
   const unknown = assessmentResponse();
   unknown.assessments[0].status = 'unknown';
   unknown.questions = ['What is the current boundary behavior?'];
+  unknown.assessments[0].audit.uncertainties = [{ kind: 'source', question: unknown.questions[0] }];
   unknown.contextRequests = [{ repository: 'website', path: 'products.ts', startLine: 1, endLine: 1, reason: 'Read current behavior' }];
   await withProvider((body, call) => {
     if (call === 1) return unknown;
@@ -260,7 +311,8 @@ test('already supplied requests get one reassessment with feedback before drafti
 
 test('repeated redundant requests stop without forcing unknown criteria into gaps', async () => {
   const unknown = assessmentResponse(); unknown.assessments[0].status = 'unknown';
-  unknown.questions = ['An unresolved policy decision is needed.'];
+  unknown.questions = ['Which supplied source defines the missing comparison?'];
+  unknown.assessments[0].audit.uncertainties = [{ kind: 'source', question: unknown.questions[0] }];
   unknown.contextRequests = [{ repository: 'website', path: 'products.ts', startLine: 1, endLine: 1, reason: 'Read the same code' }];
   let current = structuredClone(context);
   await withProvider((_body, call) => { assert.ok(call <= 2); return unknown; }, async provider => {

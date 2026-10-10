@@ -12,6 +12,7 @@ const tokenCounter = config.ragEnabled || config.provider === 'ollama' ? await l
 const provider = config.provider === 'mock' ? new MockProvider() : new OllamaProvider({ url: config.ollamaUrl, model: config.ollamaModel, timeoutMs: config.timeoutMs, numCtx: config.numCtx, tokenCounter: tokenCounter! });
 const semantic = config.ragEnabled ? {
   indexDir: config.indexDir,
+  retrievalStrategy: config.retrievalStrategy,
   embedder: new OllamaEmbedder(config.ollamaUrl, config.embedModel, config.embedTimeoutMs),
   tokenCounter: tokenCounter!,
   numCtx: config.numCtx,

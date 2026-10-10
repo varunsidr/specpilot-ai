@@ -13,8 +13,12 @@ export function gapPlan(): Plan {
 }
 export function assessmentResponse(plan = gapPlan(), supplied = context, req = requirement): AssessmentResponse {
   const catalog = evidenceCatalog(supplied);
-  return { summary: plan.summary, assessments: plan.assessments.map(a => ({ criterion: a.criterion, criterionText: req.acceptanceCriteria[a.criterion - 1], status: a.status, observation: a.observation,
-    evidenceIds: a.evidence.map(e => [...catalog].find(([, c]) => c.repository === e.repository && c.path === e.path && c.startLine === e.startLine && c.quote.includes(e.quote))![0]) })), contextRequests: plan.contextRequests, questions: plan.questions };
+  return { summary: plan.summary, assessments: plan.assessments.map(a => {
+    const evidenceIds = a.evidence.map(e => [...catalog].find(([, c]) => c.repository === e.repository && c.path === e.path && c.startLine === e.startLine && c.quote.includes(e.quote))![0]);
+    return { criterion: a.criterion, criterionText: req.acceptanceCriteria[a.criterion - 1], status: a.status, observation: a.observation, evidenceIds,
+      audit: { evidenceChecks: evidenceIds.map(evidenceId => ({ evidenceId, relation: 'direct' as const, supportsObservation: true, explanation: a.observation.slice(0, 200) })),
+        uncertainties: a.status === 'unknown' ? plan.questions.map(question => ({ kind: 'source' as const, question })) : [] } };
+  }), contextRequests: plan.contextRequests, questions: plan.questions };
 }
 export function draftResponse(plan = gapPlan()): DraftResponse {
   const evidenceId = [...evidenceCatalog(context).keys()][0];

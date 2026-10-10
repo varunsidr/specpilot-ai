@@ -1,7 +1,7 @@
 import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { inventory } from '../repositories/scan.ts';
-import { readIndex, type IndexedFile } from '../repositories/index.ts';
+import { INDEX_VERSION, readIndex, type IndexedFile } from '../repositories/index.ts';
 
 export async function freezeRepositories(sources: { website: string; tests: string }, sourceIndexDir: string, destination: string, model: string) {
   const roots = { website: path.join(destination, 'website'), tests: path.join(destination, 'tests') };
@@ -29,7 +29,7 @@ export async function freezeRepositories(sources: { website: string; tests: stri
       // Use the same unchanged-file cache contract as buildIndexes; changed files are embedded afresh.
       if (previous && previous.size === after.size && previous.mtimeMs === after.mtimeMs) reused.push({ ...previous, size: copied.size, mtimeMs: copied.mtimeMs });
     }
-    await writeFile(path.join(indexDir, `${repository}.json`), JSON.stringify({ version: 2, root: roots[repository], model, limited: listing.limited, files: reused }));
+    await writeFile(path.join(indexDir, `${repository}.json`), JSON.stringify({ version: INDEX_VERSION, root: roots[repository], model, limited: listing.limited, files: reused }));
     reports.push({ repository, files: listing.files.length, reusedFiles: reused.length, limited: listing.limited });
   }
   await writeFile(path.join(destination, 'manifest.json'), JSON.stringify({ createdAt: new Date().toISOString(), sources, roots, indexDir, model, reports }, null, 2));

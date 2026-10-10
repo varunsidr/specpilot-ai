@@ -4,10 +4,12 @@ import { splitIntoChunks } from './chunks.ts';
 import type { SourceChunk } from './chunks.ts';
 import { inventory } from './scan.ts';
 import type { Embedder } from './semantic.ts';
+import { parseSource, profileSource, type SourceProfile } from './profile.ts';
 
 export type IndexedChunk = SourceChunk & { vector: number[] };
-export type IndexedFile = { path: string; size: number; mtimeMs: number; chunks: IndexedChunk[] };
-export type RepositoryIndex = { version: 2; root: string; model: string; limited: boolean; files: IndexedFile[] };
+export const INDEX_VERSION = 3;
+export type IndexedFile = { path: string; size: number; mtimeMs: number; chunks: IndexedChunk[]; profile: SourceProfile };
+export type RepositoryIndex = { version: typeof INDEX_VERSION; root: string; model: string; limited: boolean; files: IndexedFile[] };
 type Roots = { website: string; tests: string };
 type IndexReport = { repository: keyof Roots; files: number; chunks: number; embedded: number; limited: boolean };
 
@@ -20,7 +22,7 @@ export async function readIndex(directory: string, repository: keyof Roots, root
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') throw new Error(`RAG index is missing for ${repository}; run npm run index.`);
     throw error;
   }
-  if (index.version !== 2 || index.root !== root || index.model !== model || !Array.isArray(index.files)) {
+  if (index.version !== INDEX_VERSION || index.root !== root || index.model !== model || !Array.isArray(index.files)) {
     throw new Error(`RAG index for ${repository} does not match the current repository or embedding model; run npm run index.`);
   }
   return index;
@@ -45,10 +47,13 @@ export async function buildIndexes(roots: Roots, directory: string, embedder: Em
         continue;
       }
       const raw = await readFile(path.join(root, entry.path), 'utf8');
-      const file: IndexedFile = { ...entry, chunks: [] };
+      const parsed = parseSource(raw, entry.path);
+      const file: IndexedFile = { ...entry, chunks: [], profile: profileSource(raw, entry.path, parsed) };
       files.push(file);
-      for (const chunk of splitIntoChunks(raw)) {
-        pending.push({ file, chunk, text: `File: ${entry.path}\nLines: ${chunk.startLine}-${chunk.endLine}\n${raw.slice(chunk.startOffset, chunk.endOffset)}` });
+      for (const chunk of splitIntoChunks(raw, entry.path, parsed)) {
+        const facts = file.profile.facts.filter(fact => fact.startOffset >= chunk.startOffset && fact.startOffset < chunk.endOffset);
+        const labels = [...new Set(facts.map(fact => `${fact.kind}: ${fact.name}`))].join('; ').slice(0, 600);
+        pending.push({ file, chunk, text: `File: ${entry.path}\nLines: ${chunk.startLine}-${chunk.endLine}\n${labels ? `Source facts: ${labels}\n` : ''}${raw.slice(chunk.startOffset, chunk.endOffset)}` });
       }
     }
     for (let offset = 0; offset < pending.length; offset += 8) {
@@ -57,7 +62,7 @@ export async function buildIndexes(roots: Roots, directory: string, embedder: Em
       batch.forEach((item, i) => item.file.chunks.push({ ...item.chunk, vector: vectors[i] }));
     }
     files.sort((a,b) => a.path.localeCompare(b.path));
-    const next: RepositoryIndex = { version: 2, root, model: embedder.model, limited: listing.limited, files };
+    const next: RepositoryIndex = { version: INDEX_VERSION, root, model: embedder.model, limited: listing.limited, files };
     const target = filePath(directory, repository);
     const temp = `${target}.tmp`;
     await writeFile(temp, JSON.stringify(next), 'utf8');

@@ -13,6 +13,7 @@ import { expandContext } from '../src/repositories/expand-context.ts';
 import { goldDrift, loadCases, type SourceSnapshot } from '../src/evaluation/cases.ts';
 import { goldLineCoverage, planQuality } from '../src/evaluation/quality.ts';
 import type { PinnedFile, Plan } from '../src/types.ts';
+import { prepareGpuModel, checkGpuPlacement, unloadModel, GpuPlacementError, type GpuPlacement } from '../src/providers/gpu-placement.ts';
 
 const runCommand = promisify(execFile);
 const key = (file: PinnedFile) => `${file.repository}:${file.path}`;
@@ -56,13 +57,15 @@ function quality(plan: Plan, expected: Set<string>, terms: string[]) {
   };
 }
 
-const allCases = await loadCases();
+const casesFile = path.resolve(process.env.EVAL_CASES_FILE ?? './evals/requirements.json');
+const allCases = await loadCases(casesFile);
 const selectedCases = new Set((process.env.EVAL_CASES ?? '').split(',').map(id => id.trim()).filter(Boolean));
 const cases = selectedCases.size ? allCases.filter(item => selectedCases.has(item.id)) : allCases;
 if (!cases.length) throw new Error(`No evaluation cases matched EVAL_CASES: ${[...selectedCases].join(', ')}`);
 const models = (process.env.EVAL_MODELS ?? config.ollamaModel).split(',').map(model => model.trim()).filter(Boolean);
 const retrievalOnly = process.env.EVAL_RETRIEVAL_ONLY === 'true';
-const embedder = new OllamaEmbedder(config.ollamaUrl, config.embedModel, config.embedTimeoutMs);
+let embeddingPlacements: GpuPlacement[] = [];
+const embedder = new OllamaEmbedder(config.ollamaUrl, config.embedModel, config.embedTimeoutMs, { onPlacement: placement => { embeddingPlacements.push(placement); } });
 const roots = { website: config.websiteRepo, tests: config.testRepo };
 const goldSourceSnapshot = JSON.parse(await readFile(new URL('../evals/source-snapshot.json', import.meta.url), 'utf8')) as SourceSnapshot;
 const drift = await goldDrift(roots, cases, goldSourceSnapshot);
@@ -73,11 +76,11 @@ await mkdir(outputDir, { recursive: true });
 const createdAt = new Date().toISOString();
 const stamp = createdAt.replace(/[:.]/g, '-');
 const output = path.join(outputDir, `${stamp}.json`);
-const plannerCodeHashes = Object.fromEntries(await Promise.all(['providers/prompt.ts', 'providers/schema.ts', 'providers/stages.ts', 'providers/evidence.ts', 'providers/ollama.ts', 'repositories/expand-context.ts', 'repositories/ranges.ts', 'repositories/semantic-context.ts'].map(async file => [file, createHash('sha256').update(await readFile(new URL(`../src/${file}`, import.meta.url))).digest('hex')])));
+const plannerCodeHashes = Object.fromEntries(await Promise.all(['providers/prompt.ts', 'providers/schema.ts', 'providers/stages.ts', 'providers/evidence.ts', 'providers/ollama.ts', 'providers/gpu-placement.ts', 'repositories/expand-context.ts', 'repositories/ranges.ts', 'repositories/semantic-context.ts', 'repositories/semantic.ts', 'repositories/chunks.ts', 'repositories/profile.ts', 'repositories/usage.ts', 'repositories/index.ts'].map(async file => [file, createHash('sha256').update(await readFile(new URL(`../src/${file}`, import.meta.url))).digest('hex')])));
 async function checkpoint(complete = false) {
   await writeFile(`${output}.tmp`, JSON.stringify({ createdAt,
     complete, expectedEntries: models.length * cases.length, goldSourceSnapshot, goldCases: cases,
-    settings: { models, embeddingModel: config.embedModel, numCtx: config.numCtx, timeoutMs: config.timeoutMs, retrievalOnly, plannerCodeHashes, sourceRoots: roots, indexDir: config.indexDir },
+    settings: { models, embeddingModel: config.embedModel, numCtx: config.numCtx, timeoutMs: config.timeoutMs, retrievalOnly, casesFile, retrievalStrategy: config.retrievalStrategy, requirePlannerFullGpu: !retrievalOnly, requireEmbeddingFullGpu: true, plannerCodeHashes, sourceRoots: roots, indexDir: config.indexDir },
     metricNotes: 'Gold outcomes and line ranges were inspected in source snapshots, not verified by running the external apps. Status agreement and unnecessary edits are measured against that snapshot. Exact quotes prove provenance, not semantic correctness; fill manualReview for unsupported semantic claims. File overlap and keyword coverage are legacy proxies. GPU memory includes other processes.', entries }, null, 2));
   await rename(`${output}.tmp`, output);
 }
@@ -89,9 +92,11 @@ for (const model of models) {
     const expected = new Set(item.expectedFiles.map(key));
     const result: Record<string, unknown> = { id: item.id, model, category: item.category, expectedOutcome: item.expectedOutcome, expectedFiles: [...expected] };
     let provider: OllamaProvider | undefined;
+    const placements: GpuPlacement[] = [];
+    embeddingPlacements = [];
     try {
       if ((await goldDrift(roots, [item], goldSourceSnapshot)).length) throw new Error('Gold source changed before this case; inspect and refresh the case first');
-      const retrieval = await measure(() => collectContext(roots, requirement, { indexDir: config.indexDir, embedder, tokenCounter, numCtx: config.numCtx }));
+      const retrieval = await measure(() => collectContext(roots, requirement, { indexDir: config.indexDir, embedder, tokenCounter, numCtx: config.numCtx, retrievalStrategy: config.retrievalStrategy }));
       result.context = retrieval.value;
       const ranked = retrieval.value.retrieval?.rankedFiles ?? [];
       const selected = retrieval.value.files;
@@ -104,16 +109,24 @@ for (const model of models) {
         selectedFileRecall: round(recall(expected, new Set(selected.map(key)))),
         selectedFiles: [...new Set(selected.map(key))], rankedFiles: ranked.slice(0, 10).map(key),
         goldLineCoverage: round(goldLineCoverage(retrieval.value, item)),
+        strategy: retrieval.value.retrieval?.strategy ?? config.retrievalStrategy,
+        selectionVersion: retrieval.value.retrieval?.selectionVersion,
+        anchors: retrieval.value.retrieval?.anchors ?? [], sourceLinks: retrieval.value.retrieval?.sourceLinks ?? [],
+        criteria: retrieval.value.retrieval?.criteria ?? [],
       };
       if (!retrievalOnly) {
-        provider = new OllamaProvider({ url: config.ollamaUrl, model, timeoutMs: config.timeoutMs, numCtx: config.numCtx, tokenCounter });
+        provider = new OllamaProvider({ url: config.ollamaUrl, model, timeoutMs: config.timeoutMs, numCtx: config.numCtx, tokenCounter,
+          beforeRequest: async signal => { placements.push(await prepareGpuModel(config.ollamaUrl, model, config.numCtx, signal)); },
+          afterRequest: async signal => { placements.push(await checkGpuPlacement(config.ollamaUrl, model, config.numCtx, signal)); },
+        });
         const context = retrieval.value;
         const generation = await measure(() => provider!.plan(requirement, context, { resolveContext: async (requests, retainEvidence) => {
-          Object.assign(context, await expandContext(roots, requirement, context, requests, { indexDir: config.indexDir, embedder, tokenCounter, numCtx: config.numCtx }, retainEvidence));
+          Object.assign(context, await expandContext(roots, requirement, context, requests, { indexDir: config.indexDir, embedder, tokenCounter, numCtx: config.numCtx, retrievalStrategy: config.retrievalStrategy }, retainEvidence));
           return context;
         } }));
         const verified = !(await goldDrift(roots, [item], goldSourceSnapshot)).length;
         result.goldSourcesVerified = verified;
+        result.hardwareEligible = true;
         result.plan = { latencyMs: generation.durationMs, gpu: generation.gpu,
           ollama: provider.lastMetrics, automatedQualityProxy: quality(generation.value, expected, item.scenarioTerms),
           correctness: verified ? planQuality(generation.value, item) : null, finalGoldLineCoverage: round(goldLineCoverage(context, item)), finalPromptTokens: context.retrieval?.promptTokens,
@@ -123,7 +136,17 @@ for (const model of models) {
     } catch (error) {
       result.error = error instanceof Error ? error.message : String(error);
       result.ollama = provider?.lastMetrics;
+      if (error instanceof GpuPlacementError) result.hardwareEligible = false;
       console.error(`${model} ${item.id}: ${result.error}`);
+    } finally {
+      result.embeddingPlacements = embeddingPlacements;
+      try { await embedder.unload(); }
+      catch (error) { result.embeddingUnloadError = error instanceof Error ? error.message : String(error); }
+      if (!retrievalOnly) {
+        result.gpuPlacements = placements;
+        try { await unloadModel(config.ollamaUrl, model); }
+        catch (error) { result.modelUnloadError = error instanceof Error ? error.message : String(error); }
+      }
     }
     entries.push(result);
     await checkpoint();

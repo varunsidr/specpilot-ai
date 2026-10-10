@@ -6,7 +6,9 @@
 
 The earlier corpus labeled `quantity-stock` as fully implemented. Source inspection found a counterexample: a sized product starts with no selected size (`ProductDetailView.tsx:51`), so its available stock is unknown (`115-120`). All sizes can be out of stock (`121-123`) while the increase button's guard (`456`) still permits clicks. The expected outcome is now `changes_needed`, with a gap assessment and the component as an allowed change file. Historical reports below retain their original labels and category counts; their outcome scores are not directly comparable with this corrected corpus. New reports retain the full `goldCases` alongside the source hashes.
 
-Run `npm run eval` after `npm run index`; set `EVAL_MODELS=qwen3:8b,qwen3.5:9b` to compare both planners. `npm run eval:summary` summarizes the latest report, including failures. The three-case results below are historical and use the older plan format.
+Run `npm run eval` after `npm run index`; set `EVAL_MODELS=qwen3:8b,qwen3.5:9b` to compare both planners. `EVAL_CASES_FILE=./evals/reserved-requirements.json` selects the four separate validation inputs documented in [RESERVED-REVIEW.md](RESERVED-REVIEW.md); it also applies to `eval:check` and `eval:snapshot`. Clear it for the default 19 development cases. Reports save the chosen corpus path and full gold cases. `npm run eval:summary` summarizes the latest report, including failures. The three-case results below are historical and use the older plan format.
+
+New evaluations require full reported GPU placement for embeddings and planner inference. The harness preloads and checks `/api/ps` before inference, checks again afterwards, and unloads evaluated models between cases. Planner context must match the requested setting. Hardware blocks are recorded separately and excluded from comparable plan attempts. Historical results below did not enforce this policy; logs showed CPU offload for 9B, so earlier latency results are not controlled GPU-only comparisons. The normal HTTP backend still uses automatic placement. See [FUTURE_WORKFLOW.md](../FUTURE_WORKFLOW.md) for the evaluation rules and next gates.
 
 ## Measurements on 2026-10-05
 
@@ -152,3 +154,86 @@ The final outcome score is 1/3 across all attempts. Both rejected cases reached 
 Separately, a manually authored quantity reference plan passes exact citation validation and ten independently specified arithmetic/guard checks. See [QUANTITY-REVIEW.md](QUANTITY-REVIEW.md). This is a review baseline, not a live-model success. No generated enhancement plan has passed source review, and external application and Playwright tests were not executed. These are development diagnostics rather than held-out reliability measurements or evidence of an overall accuracy improvement.
 
 The initial report is `data/evals/2026-10-09T19-21-48-786Z.json`; the final report is `data/evals/2026-10-09T19-35-53-864Z.json`. Their timestamps use UTC; the runs occurred on October 10 in Asia/Calcutta. Source hashes remained valid. Source-bearing plans, reference artifacts and review notes remain under ignored `data/`. Stage 2 remains in progress, with citation relevance, disabled-control scenarios and missing-policy handling as the next priorities.
+
+## Structural retrieval smoke on 2026-10-10
+
+The first profiler/chunking increment records deterministic syntax facts and preserves bounded JS/TS/JSX/TSX nodes. Oversized components descend into smaller nodes; malformed/unsupported sources and oversized leaves use text chunks. Index version 3 forces old caches to rebuild. This run used the existing frozen source copies and a separate `data/structural-retrieval-index/`, preserving the historical index. TypeScript and 41 deterministic tests cover source coverage/ranges, handler/control boundaries, fallback behavior, cache migration, and GPU guards before/after inference.
+
+Three known development requirements were measured in retrieval-only mode using `qwen3-embedding:0.6b`, the Qwen3 8B tokenizer, an 8192-token context and a 4680-token prompt budget. No planner inference occurred. The comparison below uses the Qwen3 8B retrieval entries from the full staged baseline; source fingerprints match. Both chunk boundaries and embedding fact labels changed, so this does not isolate their individual effects.
+
+| Case | Previous selected file recall | New selected file recall | Previous gold-line coverage | New gold-line coverage | New prompt tokens |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Quantity minimum | 1.000 | 1.000 | 1.000 | 1.000 | 4654 |
+| Quantity step buttons | 0.333 | 0.667 | 1.000 | 1.000 | 4663 |
+| Shipping policy | 0.500 | 0.500 | 0.000 | 0.000 | 4616 |
+
+The indexed quantity-control block spans lines 442-467, preserving both original button handlers and disabled guards in one chunk. All 168 recorded embedding placement checks reported positive, equal model/VRAM sizes; no case was hardware blocked. The first retrieval took 65.5 seconds including the fresh index build, followed by 23.0 and 27.3 seconds. These timings include placement checks and are not a steady-state generation-speed comparison.
+
+The smoke passes budget/source/GPU checks, but shipping still lacks its expected evidence and quantity line coverage was already complete. These three known cases do not establish a broad accuracy improvement or a correct live enhancement plan. The next work is criterion-specific targeting, relevance/policy auditing and broader retrieval validation, followed by separate GPU-eligible planner runs.
+
+The local report is `data/evals/2026-10-09T20-26-23-210Z.json` (UTC timestamp). It contains source-bearing excerpts and stays ignored. Placement telemetry is saved with the report; no external application or Playwright tests were executed.
+
+## Criterion retrieval experiment on 2026-10-11
+
+Whole-requirement selection and the criterion-selection prototype were each measured on all 19 development cases against the same frozen copies and version 3 structural index. Both used `qwen3-embedding:0.6b`, the Qwen3 8B tokenizer, an 8192-token context and a 4680-token prompt budget. This was retrieval-only evaluation; no planner inference or external application tests ran. Both reports retain the same gold cases, source fingerprints and settings. All 38 retrievals completed within budget, and all 76 pre/post embedding checks reported full GPU placement.
+
+The prototype embeds the whole requirement and a separate query for each criterion in one batch, ranks criterion queries separately, gives each criterion an initial share of remaining prompt space, then rotates through criteria to use spare space. Complete chunks can be shared without duplication. Its initial ranked files and nominated ranges are retained for inspection.
+
+| Measurement, all 19 cases | Whole requirement | Criterion prototype |
+| --- | ---: | ---: |
+| Mean selected gold-file recall | 0.671 | 0.526 |
+| Mean selected gold-line coverage | 0.669 | 0.505 |
+| Completed retrievals | 19/19 | 19/19 |
+
+Gold-line coverage improved for two cases, regressed for five and stayed equal for twelve. Empty-search coverage rose from 0.145 to 0.250 and guest-checkout coverage from 0 to 0.520. Price sorting fell from 0.813 to zero; duplicate-cart and zero-quantity coverage each fell from one to zero. Quantity minimum fell from one to 0.353 and mobile-menu from 0.273 to zero. Quantity-step coverage stayed complete, while selected file recall fell from 0.667 to 0.333. Shipping evidence coverage remains zero under both strategies.
+
+Source inspection confirms that price sorting selects `useProductSort.ts` while omitting `ProductListing.tsx`, whose inline `getSortedProducts` function implements the catalog behavior. The duplicate-cart case omits the storage helper entirely. These are concrete evidence-selection failures. Quantity-minimum still receives the decrement handler, so its lower coverage metric alone does not prove a wrong assessment. File and line metrics require source interpretation.
+
+The final implementation exposes the prototype through `RAG_RETRIEVAL_STRATEGY=criterion`, while `requirement` remains the default. Configuration and run/evaluation metadata identify the strategy. TypeScript and 44 deterministic tests pass, including minority-criterion budget pressure, shared excerpts, distant handlers in the same file, and default single-query behavior. The comparison reports retain the pre-gate prototype code hashes; the final implementation adds the opt-in gate and caches unchanged prompt-token counts. Nominations do not prove claim relevance or resolve missing business policy.
+
+After the gate and token-count cache were added, price sorting and duplicate-cart retrieval were repeated under both final strategies. All four retrievals passed budget, source-fingerprint and GPU checks. The default reproduced the baseline excerpts and token counts exactly (coverage 0.813 and 1.000); the opt-in strategy reproduced the prototype excerpts, criterion traces and token counts exactly (zero coverage for both). These smoke reports are `data/evals/2026-10-10T19-01-40-363Z.json` and `data/evals/2026-10-10T19-02-51-512Z.json`; exact comparisons are saved in ignored `data/criterion-gate-verification.json`.
+
+The next work is auditing criterion relevance and policy ambiguity, investigating how filename scores and strict initial budget shares select short unrelated excerpts, and adding independently reviewed held-out cases before enabling the experiment. These development measurements do not establish plan correctness. Stage 2 remains in progress.
+
+The whole-requirement report is `data/evals/2026-10-10T18-45-58-440Z.json`; the prototype report is `data/evals/2026-10-10T18-52-53-818Z.json`. Timestamps use UTC; these runs occurred on October 11 in Asia/Calcutta. Source-bearing range/fact comparisons are saved in ignored `data/criterion-retrieval-comparison.json`.
+
+## Anchored selection and assessment audit on 2026-10-11
+
+Selection version 2 protects useful whole-requirement excerpts before filling remaining space with criterion candidates, favors matching handlers/state/guards and referenced functions, and records syntactic calls/renders/event bindings. The planner now requires a private citation-support audit and criterion-owned source/policy questions. Policy-only uncertainty cannot request source, and unresolved draft questions are rejected. The audit is a model self-check with backend consistency validation; it is not independent semantic verification. Public plans retain schema version 2. TypeScript and 52 deterministic tests pass.
+
+The control and revised strategy each retrieved all 19 development cases on the same frozen sources, structural index, embedding model, 8B tokenizer and 4,680-token budget. Their recorded runtime hashes, gold cases and source fingerprints match. Both include the new audit instructions in the measured initial prompt, so this is the appropriate control for the revised selector. All 38 retrievals completed within budget; all 76 pre/post embedding checks reported full GPU placement. No planner inference occurred in this comparison.
+
+| Metric | Whole requirement | Anchored criterion selection |
+| --- | ---: | ---: |
+| Mean selected gold-line coverage | 0.669 | 0.669 |
+| Mean selected file recall | 0.627 | 0.640 |
+| Coverage improvements / regressions / equal | — | 0 / 0 / 19 |
+
+The earlier prototype's coverage regressions are avoided, but there is no gold-line coverage improvement over this control. Empty search gains one expected file while retaining the same gold-line coverage. Price sorting retains the test excerpt at `price-sorting.spec.ts:6-69`, yet still supplies only `ProductListing.tsx:1-53` rather than its inline sorting function/caller at `207-219`. Duplicate-cart retrieval supplies `cartStorage.ts:1-53` and `CartContext.tsx:38-113`; quantity retains its original handler/guard block. Guest checkout and shipping still have zero initial gold-line coverage. These limits keep the experiment opt-in; neither retained lines nor source-use links establish correct model interpretation.
+
+The new control is `data/evals/2026-10-10T19-39-14-180Z.json`, and the anchored run is `data/evals/2026-10-10T19-46-44-335Z.json`. Their source-bearing comparison remains ignored in `data/anchored-retrieval-comparison.json`. The earlier prototype reports are preserved separately. Selected file recall in the older control used different prompt instructions and is not an isolated comparison with this selector.
+
+### Reserved validation
+
+Four previously unused cases were recorded before this increment, source-reviewed by the implementing agent and kept separate from development cases. Independent gold review is pending; these are not an independent held-out accuracy estimate. The runtime was fixed before measuring them, and their failures were retained without tuning against them.
+
+Whole-requirement retrieval-only and the initial retrieval metrics from an anchored live 8B run have mean gold-line coverage 0.915 in both, with file recall 0.750 and 0.875 respectively. Runtime hashes, gold cases and frozen sources match. No live entry expanded context, so the captured initial metrics remain separate from generation. Both runs record eight successful pre/post embedding placement checks; the live run also records 14 full GPU planner checks and no hardware blocks.
+
+| Reserved case | Live result | Source review |
+| --- | --- | --- |
+| Currency service failure | `already_implemented` | Outcome matches supplied fallback; no edits. One audit explanation incorrectly says the cited active-guard line sets currency/rate. |
+| Negative-price cart recovery | Rejected after repair | Initial response omits citation checks; repair keeps definition-only test citations while claiming implementation. Needed provider restoration/notice lines remain absent. |
+| Positive stock shrink / unknown stock | Rejected after repair | Gold lines are supplied, but the model attributes clamping to a cart-opening line and an effect dependency line. Initial response also invents an unknown-stock gap. |
+| Missing volume pricing policy | Rejected after repair | Model mistakes unspecified policy for implementation gaps, requests an invented path, then equates ordinary conversion with approved discount treatment. It fails to ask the required policy questions. |
+
+Only 1/4 attempts matches the expected outcome. Rejection prevents these inconsistent assessments from producing drafts, but does not count as successful source interpretation or policy recognition. The accepted currency result also shows that a structurally consistent audit can overstate citation support. No external application/tests ran and no edits were applied. Reviews were performed by the implementing agent, not an independent reviewer.
+
+The retrieval control is `data/evals/2026-10-10T19-53-45-531Z.json`; the live report is `data/evals/2026-10-10T19-55-10-261Z.json`. Source-review findings remain in ignored `data/anchored-reserved-review.json`; the accepted plan's manual-review fields retain the audit finding.
+
+### Separate development planner check
+
+With the same runtime and frozen sources, anchored Qwen3 8B was checked on price sorting, five-step quantity controls and shipping policy. Sorting returns `already_implemented` after repair, matching gold. Quantity and shipping are rejected after repair, so outcome agreement is 1/3 across attempts. All six embedding and twelve planner placement checks report full GPU placement; no hardware blocks occur. All six model calls are assessments: no entry reaches expansion, drafting or review.
+
+Source review finds five distinct misleading/unsupported audit support claims in the accepted sorting response, including treating a parsed-price return as evidence of monotonic order and a price-mapping line as a count assertion. Its full test excerpt contains the relevant assertions, but the actual catalog function/caller remains omitted and tests were not executed. Quantity correctly identifies the additive gap but selects labels/markup rather than supplied handlers and marks its citations non-supporting. Shipping names missing policy in its initial summary while still declaring a gap with no business questions. The new consistency guard rejects those assessments; it does not produce a correct enhancement or a successful policy-question result.
+
+The report is `data/evals/2026-10-10T19-59-25-243Z.json`; implementing-agent review remains in ignored `data/anchored-development-review.json` and the accepted plan's manual-review fields. The next gate is better claim-to-citation selection and independent source verification, followed by the planned deterministic quantity scenario contract. These measurements do not justify enabling criterion retrieval by default or proceeding to patch application.

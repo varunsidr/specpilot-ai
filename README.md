@@ -6,11 +6,11 @@ A local TypeScript backend for your separate application and Playwright reposito
 
 This version reads repositories and proposes plans. Patch creation/application, Git diff analysis, Playwright execution, cloud providers and dashboard integration are the next increments; they are not implemented here. The example Playwright file is context data, not a runnable application or test suite.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the data flow, [ROADMAP.md](ROADMAP.md) for planned work, and [SECURITY.md](SECURITY.md) before publishing or exposing the service.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the data flow, [ROADMAP.md](ROADMAP.md) for milestones, [FUTURE_WORKFLOW.md](FUTURE_WORKFLOW.md) for the agreed implementation sequence and rough scope estimates, and [SECURITY.md](SECURITY.md) before publishing or exposing the service.
 
 ## 1. Open in VS Code and run the demo
 
-Install **Node.js 24 or newer**. The project runs TypeScript through Node's native type stripping and uses built-in HTTP/fetch APIs. The Hugging Face tokenizer package counts local model tokens; development dependencies provide type checking.
+Install **Node.js 24 or newer**. The project runs TypeScript through Node's native type stripping and uses built-in HTTP/fetch APIs. The Hugging Face tokenizer package counts local model tokens; the TypeScript parser profiles source and finds chunk boundaries.
 
 Extract this ZIP, open the `ai-engineering-platform` folder in VS Code, then use its PowerShell terminal:
 
@@ -79,6 +79,8 @@ In a second terminal, run `node scripts/demo.mjs`. The index is local and increm
 
 Only one planning request runs at a time. On an 8 GB GPU, the embedding query releases its model before the planner loads; `qwen3.5:9b` may still use some system RAM. Actual VRAM use and latency depend on quantization, context and other GPU workloads. If it is slow or runs out of memory, try `qwen3:8b`. Both models have local tokenizer files; rerun `npm run setup:tokenizers` after a fresh install. Keep `OLLAMA_NUM_CTX=8192` until measured retrieval and plan results justify a change.
 
+`npm run eval` now requires reported full GPU placement for embeddings and each planner stage, saving placement checks and reporting hardware blocks separately from plan failures. The normal HTTP API still uses Ollama's automatic placement. Source profiling and tokenization use CPU/RAM. JS/TS/JSX/TSX indexes now preserve bounded syntax blocks and store literal source facts; old indexes rebuild automatically on the next indexing/retrieval request.
+
 ## 4. Submit your own requirement
 
 PowerShell example:
@@ -112,6 +114,8 @@ Planning now runs in stages. First, assess every criterion without proposing edi
 
 For bounded numeric enhancements, drafting is instructed to state handler formulas and disabled conditions, calculate clamped expectations, and cover ordinary, partial-step, limit, zero and unknown-limit states where relevant. Review is instructed to calculate those results independently. Risk findings must reference an actual draft risk; an empty risk list cannot receive a fabricated finding. These constraints improve review structure but still require source inspection to establish correctness.
 
+Assessment diagnostics now include a private evidence and uncertainty audit. The backend requires one check per cited ID, direct supporting checks for resolved observations, and a source or policy question for each unknown criterion. Policy-only questions cannot trigger source requests, and draft questions are rejected. These checks enforce consistency of the model's self-audit; they do not independently verify its interpretation. Public plans retain schema version 2.
+
 ## Project layout
 
 ```text
@@ -124,9 +128,11 @@ src/
   repositories/scan.ts      Safe file inventory
   repositories/index.ts     Incremental local index
   repositories/chunks.ts    Line-numbered chunk boundaries
+  repositories/profile.ts   Syntax-derived source facts and ranges
   repositories/tokenizer.ts Local Qwen tokenizer counter
   repositories/semantic.ts  Ollama embedding adapter
   repositories/semantic-context.ts  Hybrid semantic/keyword retrieval
+  repositories/usage.ts             Syntactic call and event-reference links
   repositories/expand-context.ts   Bounded follow-up evidence reads
   evaluation/              Gold source checks and correctness metrics
   providers/
@@ -148,7 +154,9 @@ tests/                     Starter verification tests
 
 ## How context works
 
-With `RAG_ENABLED=true`, the service splits each eligible source file into overlapping, line-numbered chunks and embeds each chunk with Ollama. Each request refreshes changed files, embeds the requirement, combines semantic and keyword rankings, and expands imports plus related Playwright tests from leading matches. Pinned files rank first. Selected snippets include six nearby lines where they fit. The embedding model is separate from the planning model. The index is local JSON in `data/index/`; no vector database is needed. The first chunk rebuild takes longer than later incremental refreshes.
+With `RAG_ENABLED=true`, the service splits each eligible source file into line-numbered chunks and embeds each chunk with Ollama. Each request refreshes changed files, embeds the requirement, combines semantic and keyword rankings, and expands imports plus related Playwright tests from leading matches. Pinned files rank first. Selected snippets include six nearby lines where they fit. The embedding model is separate from the planning model. The index is local JSON in `data/index/`; no vector database is needed. The first chunk rebuild takes longer than later incremental refreshes.
+
+`RAG_RETRIEVAL_STRATEGY=requirement` is the default. Experimental `criterion` selection embeds each criterion separately in the same query batch. Version 2 preserves useful whole-requirement excerpts and favors matching handlers, guards, state and referenced functions before sharing remaining space across criteria. Shared chunks are included once. Saved retrieval metadata includes anchors, criterion nominations and syntactic source-use links. Symbol binding distinguishes actual references from comments, strings and shadowed names; it can miss indirect or dynamic uses. Keep this strategy opt-in while broader validation is pending. Ranking and source-use links do not prove that a fragment supports a claim or supplies a missing business decision.
 
 The planner counts Qwen tokenizer output for its full prompt, including instructions, requirement, evidence IDs, line labels, available file paths and selected code. Retrieval reserves 1,800 output tokens, 256 tokens of template headroom, 256 for validation feedback, and 1,200 for later stage state inside `OLLAMA_NUM_CTX`. At 8192, the initial assessment prompt budget is 4,680 tokens. Up to twelve chunks, normally six per repository and two per file, are selected within that budget; pins can exceed the per-repository cap. Every stage measures its actual prompt again before sending it; unusually large assessments/drafts can still fail the fit check. If pins cannot fit, the request fails with a clear error. Compare per-stage estimates with Ollama's `prompt_eval_count` in reports.
 

@@ -3,7 +3,11 @@ import { evidenceCatalog, resolveEvidence } from './evidence.ts';
 import { validateAssessments, validateContextRequests, validatePlan } from './schema.ts';
 import { rangeSupplied } from '../repositories/ranges.ts';
 
-export type AssessmentResponse = { summary: string; assessments: { criterion: number; criterionText: string; status: CriterionAssessment['status']; observation: string; evidenceIds: string[] }[]; contextRequests: ContextRequest[]; questions: string[] };
+export type AssessmentAudit = {
+  evidenceChecks: { evidenceId: string; relation: 'direct' | 'definition_only' | 'unrelated'; supportsObservation: boolean; explanation: string }[];
+  uncertainties: { kind: 'source' | 'policy'; question: string }[];
+};
+export type AssessmentResponse = { summary: string; assessments: { criterion: number; criterionText: string; status: CriterionAssessment['status']; observation: string; evidenceIds: string[]; audit: AssessmentAudit }[]; contextRequests: ContextRequest[]; questions: string[] };
 export type DraftResponse = { criteria: { criterion: number; criterionText: string; changes: { repository: 'website' | 'tests'; path: string; gap: string; evidenceIds: string[]; reason: string; steps: string[] }[]; testScenarios: string[] }[]; risks: string[]; questions: string[] };
 export type ReviewResponse = { checks: { criterion: number; criterionText: string; criterionAligned: boolean; stepsMatchTests: boolean; evidenceSupportsGap: boolean; scenarioChecks: { scenario: string; executable: boolean; resultMatches: boolean; observation: string }[]; issues: string[] }[]; riskIssues: { risk: string; issue: string }[] };
 const strings = { type: 'array', maxItems: 8, items: { type: 'string', minLength: 1, maxLength: 400 } };
@@ -22,9 +26,12 @@ function criterionArray<T extends Record<string, unknown>>(requirement: Requirem
   return { type: 'array', minItems: numbers.length, maxItems: numbers.length, items: variants.length === 1 ? variants[0] : { anyOf: variants } };
 }
 export function assessmentSchema(context: RepositoryContext, requirement: Requirement) {
+  const audit = objectSchema({ evidenceChecks: { type: 'array', maxItems: 4, items: objectSchema({ evidenceId: ids(context).items,
+    relation: { type: 'string', enum: ['direct', 'definition_only', 'unrelated'] }, supportsObservation: { type: 'boolean' }, explanation: { type: 'string', minLength: 1, maxLength: 200 } }) },
+    uncertainties: { type: 'array', maxItems: 8, items: objectSchema({ kind: { type: 'string', enum: ['source', 'policy'] }, question: { type: 'string', minLength: 1, maxLength: 400 } }) } });
   return objectSchema({ summary: { type: 'string', maxLength: 300 }, assessments: criterionArray(requirement, requirement.acceptanceCriteria.map((_, i) => i + 1), () => [
-    { status: { type: 'string', enum: ['implemented', 'gap'] }, observation: { type: 'string', maxLength: 300 }, evidenceIds: ids(context, true) },
-    { status: { type: 'string', enum: ['unknown'] }, observation: { type: 'string', maxLength: 300 }, evidenceIds: ids(context) },
+    { status: { type: 'string', enum: ['implemented', 'gap'] }, observation: { type: 'string', maxLength: 300 }, evidenceIds: ids(context, true), audit },
+    { status: { type: 'string', enum: ['unknown'] }, observation: { type: 'string', maxLength: 300 }, evidenceIds: ids(context), audit },
   ]),
     contextRequests: { type: 'array', maxItems: 3, items: objectSchema({ repository, path: { type: 'string' }, startLine: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 }, reason: { type: 'string', maxLength: 300 } }) }, questions: strings });
 }
@@ -69,7 +76,7 @@ function criterionRows(value: unknown, expected: number[], requirement: Requirem
 export function assessmentPlan(value: unknown, context: RepositoryContext, requirement: Requirement): { response: AssessmentResponse; plan: Plan; redundantRequests: ContextRequest[] } {
   const a = object(value, ['summary', 'assessments', 'contextRequests', 'questions']);
   text(a.summary, 300); stringList(a.questions);
-  const rows = criterionRows(a.assessments, requirement.acceptanceCriteria.map((_, i) => i + 1), requirement, ['criterion', 'criterionText', 'status', 'observation', 'evidenceIds']);
+  const rows = criterionRows(a.assessments, requirement.acceptanceCriteria.map((_, i) => i + 1), requirement, ['criterion', 'criterionText', 'status', 'observation', 'evidenceIds', 'audit']);
   const catalog = evidenceCatalog(context);
   const assessments = rows.map(row => {
     if (!['implemented', 'gap', 'unknown'].includes(row.status as string)) throw new Error('Invalid assessment status');
@@ -86,6 +93,34 @@ export function assessmentPlan(value: unknown, context: RepositoryContext, requi
   const contextRequests = requests.filter(request => !redundantRequests.includes(request));
   if (unknown && !a.questions.length) throw new Error('Unknown criteria require explicit questions');
   if (!unknown && a.questions.length) throw new Error('Assessment questions require unknown criteria: unresolved source facts or business decisions must be unknown, not gaps');
+  const assignedQuestions = new Set<string>();
+  let hasSourceUncertainty = false;
+  for (const row of rows) {
+    const audit = object(row.audit, ['evidenceChecks', 'uncertainties']);
+    const selectedIds = row.evidenceIds as string[];
+    if (!Array.isArray(audit.evidenceChecks) || audit.evidenceChecks.length !== selectedIds.length) throw new Error('Audit every selected evidence ID exactly once');
+    const checkedIds = new Set<string>();
+    for (const entry of audit.evidenceChecks) {
+      const check = object(entry, ['evidenceId', 'relation', 'supportsObservation', 'explanation']);
+      if (typeof check.evidenceId !== 'string' || !selectedIds.includes(check.evidenceId) || checkedIds.has(check.evidenceId)) throw new Error('Evidence audit IDs must match the selected criterion evidence exactly once');
+      if (!['direct', 'definition_only', 'unrelated'].includes(check.relation as string) || typeof check.supportsObservation !== 'boolean') throw new Error('Invalid evidence audit relation or support flag');
+      text(check.explanation, 200); checkedIds.add(check.evidenceId);
+      if (row.status !== 'unknown' && (check.relation !== 'direct' || !check.supportsObservation)) throw new Error(`Criterion ${row.criterion}: resolved observations require direct supporting evidence; use unknown or remove unrelated citations`);
+      if (check.relation === 'unrelated' && check.supportsObservation) throw new Error('Unrelated evidence cannot support an observation');
+    }
+    if (!Array.isArray(audit.uncertainties) || audit.uncertainties.length > 8) throw new Error('Invalid assessment uncertainties');
+    if (row.status !== 'unknown' && audit.uncertainties.length) throw new Error('Unresolved source or policy decisions require unknown criteria before drafting');
+    if (row.status === 'unknown' && !audit.uncertainties.length) throw new Error('Unknown criteria require their own source or policy question');
+    const seenQuestions = new Set<string>();
+    for (const entry of audit.uncertainties) {
+      const uncertainty = object(entry, ['kind', 'question']); text(uncertainty.question);
+      if (!['source', 'policy'].includes(uncertainty.kind as string) || !(a.questions as string[]).includes(uncertainty.question) || seenQuestions.has(uncertainty.question)) throw new Error('Assign each uncertainty once to its criterion and copy its question into questions');
+      seenQuestions.add(uncertainty.question); assignedQuestions.add(uncertainty.question);
+      if (uncertainty.kind === 'source') hasSourceUncertainty = true;
+    }
+  }
+  if ((a.questions as string[]).some(question => !assignedQuestions.has(question))) throw new Error('Every question must belong to an unknown criterion audit');
+  if (unknown && !hasSourceUncertainty && contextRequests.length) throw new Error('Policy questions cannot be resolved by source requests; return contextRequests=[]');
   if (!unknown && contextRequests.length) throw new Error('Resolved assessments cannot have pending context requests');
   const plan: Plan = { schemaVersion: 2, outcome: unknown ? 'needs_context' : gaps ? 'changes_needed' : 'already_implemented', summary: a.summary, assessments,
     changes: [], contextRequests, testScenarios: requirement.acceptanceCriteria.map(c => `Verify: ${c}`), risks: [], questions: a.questions };
@@ -94,6 +129,7 @@ export function assessmentPlan(value: unknown, context: RepositoryContext, requi
 }
 export function draftPlan(value: unknown, response: AssessmentResponse, base: Plan, context: RepositoryContext, requirement: Requirement): { response: DraftResponse; plan: Plan } {
   const d = object(value, ['criteria', 'risks', 'questions']); stringList(d.risks); stringList(d.questions);
+  if (d.questions.length) throw new Error('Draft contains unresolved questions; resolve source or policy uncertainty in assessment before locking gaps');
   const gaps = base.assessments.filter(row => row.status === 'gap').map(row => row.criterion);
   const rows = criterionRows(d.criteria, gaps, requirement, ['criterion', 'criterionText', 'changes', 'testScenarios']);
   const catalog = evidenceCatalog(context);
