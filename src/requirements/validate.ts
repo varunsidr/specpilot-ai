@@ -1,4 +1,4 @@
-import type { PinnedFile, Requirement } from '../types.ts';
+import type { PinnedFile, Requirement, QuantityContract } from '../types.ts';
 export class InputError extends Error {}
 export function validateRequirement(value: unknown): Requirement {
   if (!value || typeof value !== 'object') throw new InputError('Expected a JSON object');
@@ -24,5 +24,23 @@ export function validateRequirement(value: unknown): Requirement {
     });
     if (new Set(pinnedFiles.map(pin => `${pin.repository}:${pin.path}`)).size !== pinnedFiles.length) throw new InputError('pinnedFiles contains duplicates');
   }
-  return { title: r.title.trim(), description: r.description.trim(), acceptanceCriteria: r.acceptanceCriteria.map(v => v.trim()), ...(pinnedFiles ? { pinnedFiles } : {}) };
+  let scenarioContracts: QuantityContract[] | undefined;
+  if (r.scenarioContracts !== undefined) {
+    if (!Array.isArray(r.scenarioContracts) || r.scenarioContracts.length > r.acceptanceCriteria.length) throw new InputError('scenarioContracts must contain at most one contract per criterion');
+    const seen = new Set<number>();
+    scenarioContracts = r.scenarioContracts.map(value => {
+      if (!value || typeof value !== 'object' || Array.isArray(value)) throw new InputError('Invalid scenario contract');
+      const c = value as Record<string, unknown>;
+      const keys = ['kind', 'criterion', 'direction', 'step', 'minimum'];
+      if (Object.keys(c).length !== keys.length || keys.some(key => !(key in c)) || c.kind !== 'quantity_step' ||
+          !Number.isInteger(c.criterion) || (c.criterion as number) < 1 || (c.criterion as number) > (r.acceptanceCriteria as string[]).length || seen.has(c.criterion as number) ||
+          !['increase', 'decrease'].includes(c.direction as string) || !Number.isSafeInteger(c.step) || (c.step as number) < 1 ||
+          !Number.isSafeInteger(c.minimum) || (c.minimum as number) < 1 || (c.minimum as number) + 3 * (c.step as number) > 1000000) {
+        throw new InputError('Quantity contracts need unique valid criteria, increase/decrease direction, positive integer step/minimum, and minimum + 3*step <= 1000000');
+      }
+      seen.add(c.criterion as number);
+      return { kind: 'quantity_step', criterion: c.criterion as number, direction: c.direction as QuantityContract['direction'], step: c.step as number, minimum: c.minimum as number };
+    });
+  }
+  return { title: r.title.trim(), description: r.description.trim(), acceptanceCriteria: r.acceptanceCriteria.map(v => v.trim()), ...(pinnedFiles ? { pinnedFiles } : {}), ...(scenarioContracts ? { scenarioContracts } : {}) };
 }

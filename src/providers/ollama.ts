@@ -4,15 +4,16 @@ import { validatePlan } from './schema.ts';
 import { assessmentPlan, assessmentSchema, draftPlan, draftSchema, reviewSchema, validateReview, type AssessmentResponse, type DraftResponse, type ReviewResponse } from './stages.ts';
 import { MAX_CONTEXT_ROUNDS, MAX_PLAN_TOKENS, PROMPT_SAFETY_TOKENS, messageTokens, stageMessages, type Stage } from './prompt.ts';
 import type { TokenCounter } from '../repositories/tokenizer.ts';
+import { checkQuantityScenarios, type QuantityResult } from './quantity-scenarios.ts';
 export type OllamaMetrics = { promptTokens?: number; generatedTokens?: number; totalDurationMs?: number; loadDurationMs?: number; doneReason?: string; requests: number; contextRounds: number; validationFailures: string[];
-  stages: { stage: Stage; promptTokens?: number; generatedTokens?: number; estimatedPromptTokens: number; durationMs: number }[]; assessment?: AssessmentResponse; draft?: DraftResponse; review?: ReviewResponse; reviewAttempts: { draft: DraftResponse; review: ReviewResponse }[]; consistencyFailures: string[]; redundantContextRequests: ContextRequest[]; rejectedResponses: { stage: Stage; error: string; content: string; truncated: boolean }[] };
+  stages: { stage: Stage; promptTokens?: number; generatedTokens?: number; estimatedPromptTokens: number; durationMs: number }[]; assessment?: AssessmentResponse; draft?: DraftResponse; review?: ReviewResponse; reviewAttempts: { draft: DraftResponse; review: ReviewResponse }[]; scenarioAttempts: { draft: DraftResponse; results: QuantityResult[]; issues: string[] }[]; consistencyFailures: string[]; redundantContextRequests: ContextRequest[]; rejectedResponses: { stage: Stage; error: string; content: string; truncated: boolean }[] };
 export class OllamaProvider implements AIProvider {
   name = 'ollama';
   lastMetrics?: OllamaMetrics;
   private options: { url: string; model: string; timeoutMs: number; numCtx: number; tokenCounter: TokenCounter; beforeRequest?: (signal: AbortSignal) => Promise<void>; afterRequest?: (signal: AbortSignal) => Promise<void> };
   constructor(options: OllamaProvider['options']) { this.options = options; }
   async plan(requirement: Requirement, context: RepositoryContext, options?: { resolveContext?: (requests: ContextRequest[], retainEvidence: Evidence[]) => Promise<RepositoryContext> }): Promise<Plan> {
-    this.lastMetrics = { requests: 0, contextRounds: 0, validationFailures: [], stages: [], consistencyFailures: [], reviewAttempts: [], redundantContextRequests: [], rejectedResponses: [] };
+    this.lastMetrics = { requests: 0, contextRounds: 0, validationFailures: [], stages: [], consistencyFailures: [], reviewAttempts: [], scenarioAttempts: [], redundantContextRequests: [], rejectedResponses: [] };
     const signal = AbortSignal.timeout(this.options.timeoutMs);
     const requestStage = async <T>(stage: Stage, schema: object, validate: (value: unknown) => T, assessment?: AssessmentResponse, draft?: DraftResponse, initialFeedback?: string): Promise<T> => {
       let feedback = initialFeedback;
@@ -61,6 +62,20 @@ export class OllamaProvider implements AIProvider {
         for (let revision = 0; revision < 2; revision++) {
           const drafted = await requestStage('draft', draftSchema(context, requirement, base), value => draftPlan(value, assessed.response, base, context, requirement), assessed.response, undefined, revisionFeedback);
           this.lastMetrics.draft = drafted.response;
+          const checked = drafted.response.criteria.flatMap(row => {
+            const contract = requirement.scenarioContracts?.find(c => c.criterion === row.criterion);
+            return contract ? [checkQuantityScenarios(contract, row.quantityRule!, row.quantityChecks!)] : [];
+          });
+          if (checked.length) {
+            const results = checked.flatMap(c => c.results), issues = checked.flatMap(c => c.issues);
+            this.lastMetrics.scenarioAttempts.push({ draft: drafted.response, results, issues });
+            this.lastMetrics.consistencyFailures.push(...issues);
+            if (issues.length) {
+              if (revision === 1) throw new Error(`Deterministic quantity checks rejected draft: ${issues.join('; ').slice(0, 1000)}`);
+              revisionFeedback = `Backend quantity checks rejected the draft. Correct the declared rule and all required cases: ${issues.join('; ')}`;
+              continue;
+            }
+          }
           const review = await requestStage('review', reviewSchema(requirement, base, drafted.response), value => validateReview(value, base, requirement, drafted.response), assessed.response, drafted.response);
           this.lastMetrics.review = review;
           this.lastMetrics.reviewAttempts.push({ draft: drafted.response, review });

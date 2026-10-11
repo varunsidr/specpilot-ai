@@ -1,6 +1,7 @@
 export type RepositoryName = 'website' | 'tests';
 export type PinnedFile = { repository: RepositoryName; path: string };
-export type Requirement = { title: string; description: string; acceptanceCriteria: string[]; pinnedFiles?: PinnedFile[] };
+export type QuantityContract = { kind: 'quantity_step'; criterion: number; direction: 'increase' | 'decrease'; step: number; minimum: number };
+export type Requirement = { title: string; description: string; acceptanceCriteria: string[]; pinnedFiles?: PinnedFile[]; scenarioContracts?: QuantityContract[] };
 export type ContextFile = { repository: RepositoryName; path: string; content: string; truncated: boolean; startLine?: number; endLine?: number; reason?: 'pinned' | 'semantic' | 'import' | 'test' | 'requested' | 'evidence' };
 export type ContextRequest = PinnedFile & { startLine: number; endLine: number; reason: string };
 export type Evidence = PinnedFile & { startLine: number; endLine: number; quote: string };

@@ -2,13 +2,14 @@ import type { ContextRequest, CriterionAssessment, Plan, RepositoryContext, Requ
 import { evidenceCatalog, resolveEvidence } from './evidence.ts';
 import { validateAssessments, validateContextRequests, validatePlan } from './schema.ts';
 import { rangeSupplied } from '../repositories/ranges.ts';
+import { quantitySchema, validateQuantityFields, quantityScenarioTexts, quantityRuleText, type QuantityRule, type QuantityCheck } from './quantity-scenarios.ts';
 
 export type AssessmentAudit = {
   evidenceChecks: { evidenceId: string; relation: 'direct' | 'definition_only' | 'unrelated'; supportsObservation: boolean; explanation: string }[];
   uncertainties: { kind: 'source' | 'policy'; question: string }[];
 };
 export type AssessmentResponse = { summary: string; assessments: { criterion: number; criterionText: string; status: CriterionAssessment['status']; observation: string; evidenceIds: string[]; audit: AssessmentAudit }[]; contextRequests: ContextRequest[]; questions: string[] };
-export type DraftResponse = { criteria: { criterion: number; criterionText: string; changes: { repository: 'website' | 'tests'; path: string; gap: string; evidenceIds: string[]; reason: string; steps: string[] }[]; testScenarios: string[] }[]; risks: string[]; questions: string[] };
+export type DraftResponse = { criteria: { criterion: number; criterionText: string; changes: { repository: 'website' | 'tests'; path: string; gap: string; evidenceIds: string[]; reason: string; steps: string[] }[]; testScenarios: string[]; quantityRule?: QuantityRule; quantityChecks?: QuantityCheck[] }[]; risks: string[]; questions: string[] };
 export type ReviewResponse = { checks: { criterion: number; criterionText: string; criterionAligned: boolean; stepsMatchTests: boolean; evidenceSupportsGap: boolean; scenarioChecks: { scenario: string; executable: boolean; resultMatches: boolean; observation: string }[]; issues: string[] }[]; riskIssues: { risk: string; issue: string }[] };
 const strings = { type: 'array', maxItems: 8, items: { type: 'string', minLength: 1, maxLength: 400 } };
 const repository = { type: 'string', enum: ['website', 'tests'] };
@@ -36,8 +37,11 @@ export function assessmentSchema(context: RepositoryContext, requirement: Requir
     contextRequests: { type: 'array', maxItems: 3, items: objectSchema({ repository, path: { type: 'string' }, startLine: { type: 'integer', minimum: 1 }, endLine: { type: 'integer', minimum: 1 }, reason: { type: 'string', maxLength: 300 } }) }, questions: strings });
 }
 export function draftSchema(context: RepositoryContext, requirement: Requirement, base: Plan) {
-  return objectSchema({ criteria: criterionArray(requirement, base.assessments.filter(a => a.status === 'gap').map(a => a.criterion), () => ({
-    changes: { type: 'array', minItems: 1, maxItems: 4, items: objectSchema({ repository, path: { type: 'string' }, gap: { type: 'string', maxLength: 300 }, evidenceIds: ids(context, true), reason: { type: 'string', maxLength: 300 }, steps: { ...strings, minItems: 1 } }) }, testScenarios: { ...strings, minItems: 1 } })), risks: strings, questions: strings });
+  return objectSchema({ criteria: criterionArray(requirement, base.assessments.filter(a => a.status === 'gap').map(a => a.criterion), number => {
+    const contract = requirement.scenarioContracts?.find(c => c.criterion === number);
+    return { changes: { type: 'array', minItems: 1, maxItems: 4, items: objectSchema({ repository, path: { type: 'string' }, gap: { type: 'string', maxLength: 300 }, evidenceIds: ids(context, true), reason: { type: 'string', maxLength: 300 }, steps: { ...strings, minItems: 1 } }) },
+      testScenarios: contract ? { ...strings, maxItems: 0 } : { ...strings, minItems: 1 }, ...(contract ? quantitySchema(contract) : {}) };
+  }), risks: strings, questions: strings });
 }
 export function reviewSchema(requirement: Requirement, base: Plan, draft: DraftResponse) {
   return objectSchema({ checks: criterionArray(requirement, base.assessments.filter(a => a.status === 'gap').map(a => a.criterion), number => {
@@ -62,11 +66,11 @@ function stringList(value: unknown): asserts value is string[] {
   if (!Array.isArray(value) || value.length > 8) throw new Error('Stage list exceeds eight entries');
   value.forEach(item => text(item));
 }
-function criterionRows(value: unknown, expected: number[], requirement: Requirement, keys: string[]): Record<string, unknown>[] {
+function criterionRows(value: unknown, expected: number[], requirement: Requirement, keys: string[], extraKeys?: (criterion: number) => string[]): Record<string, unknown>[] {
   if (!Array.isArray(value) || value.length !== expected.length) throw new Error(`Assess or plan every required criterion exactly once: return ${expected.length} rows for [${expected.join(', ')}]; received ${Array.isArray(value) ? value.length : 'non-array'}`);
   const seen = new Set<number>();
   return value.map(row => {
-    const result = object(row, keys);
+    const result = object(row, [...keys, ...(extraKeys?.((row as { criterion: number } | null)?.criterion ?? 0) ?? [])]);
     const id = result.criterion;
     if (!Number.isInteger(id) || !expected.includes(id as number) || seen.has(id as number)) throw new Error(`Invalid or duplicate stage criterion ${id}; return each of [${expected.join(', ')}] exactly once`);
     if (result.criterionText !== requirement.acceptanceCriteria[(id as number) - 1]) throw new Error(`Criterion ${id} text must exactly match its acceptance criterion`);
@@ -131,12 +135,17 @@ export function draftPlan(value: unknown, response: AssessmentResponse, base: Pl
   const d = object(value, ['criteria', 'risks', 'questions']); stringList(d.risks); stringList(d.questions);
   if (d.questions.length) throw new Error('Draft contains unresolved questions; resolve source or policy uncertainty in assessment before locking gaps');
   const gaps = base.assessments.filter(row => row.status === 'gap').map(row => row.criterion);
-  const rows = criterionRows(d.criteria, gaps, requirement, ['criterion', 'criterionText', 'changes', 'testScenarios']);
+  const rows = criterionRows(d.criteria, gaps, requirement, ['criterion', 'criterionText', 'changes', 'testScenarios'], number => requirement.scenarioContracts?.some(c => c.criterion === number) ? ['quantityRule', 'quantityChecks'] : []);
   const catalog = evidenceCatalog(context);
   const changes: Plan['changes'] = [], scenarios: string[] = [];
-  for (const row of rows) {
+  for (let row of rows) {
     stringList(row.testScenarios);
-    if (!(row.testScenarios as string[]).length) throw new Error('Every gap needs test scenarios');
+    const contract = requirement.scenarioContracts?.find(c => c.criterion === row.criterion);
+    if (contract) {
+      if ((row.testScenarios as string[]).length) throw new Error('Structured quantity scenarios require testScenarios=[]; the backend supplies their exact text');
+      const fields = validateQuantityFields(row.quantityRule, row.quantityChecks, contract);
+      row = { ...row, testScenarios: quantityScenarioTexts(contract, fields.checks) };
+    } else if (!(row.testScenarios as string[]).length) throw new Error('Every gap needs test scenarios');
     if (new Set(row.testScenarios as string[]).size !== (row.testScenarios as string[]).length) throw new Error('Draft test scenarios must be distinct within each criterion');
     scenarios.push(...(row.testScenarios as string[]).map(scenario => `Criterion ${row.criterion}: ${scenario}`));
     if (!Array.isArray(row.changes) || !row.changes.length || row.changes.length > 4) throw new Error('Each gap requires one to four relevant changes');
@@ -146,11 +155,16 @@ export function draftPlan(value: unknown, response: AssessmentResponse, base: Pl
       const evidence = resolveEvidence(c.evidenceIds, catalog, true);
       const assessedIds = response.assessments.find(a => a.criterion === row.criterion)!.evidenceIds;
       if (!(c.evidenceIds as string[]).some(id => assessedIds.includes(id))) throw new Error('Change must retain evidence from its locked gap assessment');
-      changes.push({ repository: c.repository as 'website' | 'tests', path: c.path as string, criterion: row.criterion as number, gap: c.gap, reason: c.reason, steps: c.steps, evidence });
+      changes.push({ repository: c.repository as 'website' | 'tests', path: c.path as string, criterion: row.criterion as number, gap: c.gap, reason: c.reason,
+        steps: contract ? [quantityRuleText(row.quantityRule as QuantityRule), ...(c.steps as string[])] : c.steps, evidence });
     }
   }
   const plan = validatePlan({ ...base, changes, testScenarios: [...base.assessments.filter(a => a.status === 'implemented').map(a => `Verify: ${requirement.acceptanceCriteria[a.criterion - 1]}`), ...scenarios], risks: d.risks, questions: d.questions }, context, requirement);
-  return { response: value as DraftResponse, plan };
+  const normalized = (value as DraftResponse).criteria.map(row => {
+    const contract = requirement.scenarioContracts?.find(c => c.criterion === row.criterion);
+    return contract ? { ...row, testScenarios: quantityScenarioTexts(contract, row.quantityChecks!) } : row;
+  });
+  return { response: { ...(value as DraftResponse), criteria: normalized }, plan };
 }
 export function validateReview(value: unknown, base: Plan, requirement: Requirement, draft: DraftResponse): ReviewResponse {
   const r = object(value, ['checks', 'riskIssues']);

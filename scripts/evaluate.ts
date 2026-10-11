@@ -76,7 +76,7 @@ await mkdir(outputDir, { recursive: true });
 const createdAt = new Date().toISOString();
 const stamp = createdAt.replace(/[:.]/g, '-');
 const output = path.join(outputDir, `${stamp}.json`);
-const plannerCodeHashes = Object.fromEntries(await Promise.all(['providers/prompt.ts', 'providers/schema.ts', 'providers/stages.ts', 'providers/evidence.ts', 'providers/ollama.ts', 'providers/gpu-placement.ts', 'repositories/expand-context.ts', 'repositories/ranges.ts', 'repositories/semantic-context.ts', 'repositories/semantic.ts', 'repositories/chunks.ts', 'repositories/profile.ts', 'repositories/usage.ts', 'repositories/index.ts'].map(async file => [file, createHash('sha256').update(await readFile(new URL(`../src/${file}`, import.meta.url))).digest('hex')])));
+const plannerCodeHashes = Object.fromEntries(await Promise.all(['providers/prompt.ts', 'providers/schema.ts', 'providers/stages.ts', 'providers/evidence.ts', 'providers/ollama.ts', 'providers/gpu-placement.ts', 'providers/quantity-scenarios.ts', 'requirements/validate.ts', 'repositories/expand-context.ts', 'repositories/ranges.ts', 'repositories/semantic-context.ts', 'repositories/semantic.ts', 'repositories/chunks.ts', 'repositories/profile.ts', 'repositories/usage.ts', 'repositories/index.ts'].map(async file => [file, createHash('sha256').update(await readFile(new URL(`../src/${file}`, import.meta.url))).digest('hex')])));
 async function checkpoint(complete = false) {
   await writeFile(`${output}.tmp`, JSON.stringify({ createdAt,
     complete, expectedEntries: models.length * cases.length, goldSourceSnapshot, goldCases: cases,

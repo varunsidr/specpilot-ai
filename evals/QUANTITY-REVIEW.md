@@ -24,4 +24,6 @@ Inspect every cited claim and risk against the supplied excerpts. Cite the contr
 
 Reject raw expectations of 13 from quantity 8/stock 10 or zero from quantity 5/minimum one, even if the model review approves them. Passing this checklist on one development case does not establish held-out reliability or authorize patch application.
 
+The optional automated [quantity scenario contract](SCENARIO-CONTRACTS.md) now checks structured arithmetic and guards before model review. Its deterministic tests include these numeric examples and both valid decrease-at-minimum policies. Backend-generated synthetic boundary states are fixed independently of the model's proposed formula; they do not establish real fixture setup or execute UI tests. Claim-to-citation interpretation remains a separate open gate.
+
 The local reference artifact is `data/evals/quantity-step-buttons-source-reviewed-reference.json`. It contains a manually authored public-schema plan, exact source excerpts and hash, and ten passing reference arithmetic/guard checks. It uses functional state updates and disables the new increase control for whole-product unavailability as well as selected-stock limits. The source-bearing artifact stays ignored. It is a static source review reference, not a generated plan accepted by the live model, and no external application or Playwright tests were executed.

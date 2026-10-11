@@ -647,6 +647,10 @@
       "acceptanceCriteria": [
         "Plus-five adds five unless the available stock limit is lower.",
         "Minus-five subtracts five while keeping quantity at least one."
+      ],
+      "scenarioContracts": [
+        { "kind": "quantity_step", "criterion": 1, "direction": "increase", "step": 5, "minimum": 1 },
+        { "kind": "quantity_step", "criterion": 2, "direction": "decrease", "step": 5, "minimum": 1 }
       ]
     },
     "expectedFiles": [

@@ -3,6 +3,7 @@ import type { TokenCounter } from '../repositories/tokenizer.ts';
 import { evidenceCatalog } from './evidence.ts';
 import { suppliedRanges } from '../repositories/ranges.ts';
 import type { AssessmentResponse, DraftResponse } from './stages.ts';
+import { quantityStates } from './quantity-scenarios.ts';
 
 export const MAX_PLAN_TOKENS = 1800;
 export const PROMPT_SAFETY_TOKENS = 256;
@@ -28,8 +29,13 @@ export function stageMessages(stage: Stage, requirement: Requirement, context: R
   instructions.draft += ' Return questions=[] in drafting. A required source or policy question means the criterion was unresolved during assessment; never invent a default to avoid that question.';
   instructions.review += ' Independently compute the result from the criterion and proposed formula BEFORE comparing it with the scenario expectation. Show the starting values, arithmetic, applied bounds and final value in observation for numeric scenarios. An expectation outside a required bound fails even if it matches an incorrect proposed handler. A scenario asserting a disabled control and unchanged state can pass; a scenario requiring a click on that control cannot. riskIssues contains only {risk, issue} findings: copy risk exactly from proposedDraft.risks and explain a concrete false or unsupported statement. If risks is empty or all risks are supported, return []. Never put an all-clear statement in any issues array.';
   instructions.review += ' A guard that blocks a partial step toward the limit violates a clamp-to-limit criterion: mark criterionAligned false even when the scenario expects that wrong disabled state. New proposed behavior is evaluated from its steps; it need not already exist in source. Judge each risk statement itself, not whether new code already exists. Verify that selected evidence supports the specific observation; unrelated markup cannot establish a handler or its guard.';
+  if (requirement.scenarioContracts?.length) {
+    instructions.draft += ' For a caller quantity_step contract, return testScenarios=[] and quantityRule plus quantityChecks covering each supplied caseId exactly once. Backend owns starting states and materializes scenario text. Increase uses operation=add, bound=stock, guard=stock_or_unavailable: disable for unavailable product, known zero stock or quantity>=known stock; allow unknown stock and partial increases. Decrease uses operation=subtract, bound=minimum, guard=at_minimum or never; stock/unavailability must not block decreasing. Copy step/minimum from the contract. At disabled boundaries assert_disabled or assert_unchanged; click only enabled controls. Use controlled fixtures for these synthetic states. Match implementation steps to the declared rule; backend arithmetic checks do not execute code.';
+    instructions.review += ' Structured quantity cases already passed backend arithmetic/guard checks. Still verify proposed prose/edits implement the declared quantityRule, setup can be controlled, and evidence supports the gap. Never treat arithmetic validation as proof of source interpretation or working UI code.';
+  }
   const evidence = stage === 'review' ? [...catalog].filter(([id]) => assessment?.assessments.some(a => a.evidenceIds.includes(id)) || draft?.criteria.some(c => c.changes.some(change => change.evidenceIds.includes(id)))) : [...catalog];
-  const input = { requirement: { title: requirement.title, description: requirement.description, criteria },
+  const input = { requirement: { title: requirement.title, description: requirement.description, criteria,
+    ...(requirement.scenarioContracts?.length ? { scenarioContracts: requirement.scenarioContracts.map(c => ({ ...c, ...(stage !== 'assessment' ? { cases: quantityStates(c) } : {}) })) } : {}) },
     context: stage === 'review' ? { evidence: evidence.map(([id, citation]) => ({ id, ...citation })) } : {
       files: context.files.map(file => ({ repository: file.repository, path: file.path, startLine: file.startLine, endLine: file.endLine, truncated: file.truncated,
         content: file.content.replaceAll('\r\n', '\n').split('\n').map((line, i) => {

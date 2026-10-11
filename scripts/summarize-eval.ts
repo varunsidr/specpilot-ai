@@ -35,6 +35,8 @@ for (const model of new Set(report.entries.map(entry => entry.model))) {
   console.log(`${model}: ${entries.length} cases, ${scored.length} scored valid plans, ${entries.filter(entry => entry.error && entry.hardwareEligible !== false).length} failures, ${correct}/${comparable.length} gold outcomes matched across comparable attempts; ${drifted.length} cases withheld for source drift; ${hardwareBlocked.length} hardware blocked.`);
   console.log(`Rejected citation attempts: ${metrics.filter(error => error.includes('Unsupported citation')).length}; total validation failures: ${metrics.length}.`);
   console.log(`Unknown evidence-ID attempts: ${metrics.filter(error => error.includes('Unknown evidence ID')).length}; consistency findings: ${entries.reduce((sum, entry) => sum + ((entry.plan?.ollama ?? entry.ollama)?.consistencyFailures?.length ?? 0), 0)}.`);
+  const scenarioAttempts = entries.flatMap(entry => (entry.plan?.ollama ?? entry.ollama)?.scenarioAttempts ?? []);
+  console.log(`Deterministic quantity attempts: ${scenarioAttempts.length}; checked cases: ${scenarioAttempts.reduce((sum, attempt) => sum + attempt.results.length, 0)}; rejected attempts: ${scenarioAttempts.filter(attempt => attempt.issues.length).length}.`);
   console.log(`Accepted unnecessary edits on implemented/ambiguous cases: ${scored.reduce((sum, entry) => sum + (entry.plan!.correctness!.unnecessaryEditCount ?? 0), 0)}. Semantic claim review: ${reviewed.length}/${scored.length} reviewed.`);
   console.log(`Unsupported claims in reviewed accepted plans: ${reviewed.reduce((sum, entry) => sum + (entry.plan!.correctness!.manualReview.unsupportedSemanticClaims ?? 0), 0)}. Unreviewed and rejected plans are not included in this claim count.`);
 }
